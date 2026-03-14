@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>MindSync - The Ultimate Word Matching Game</title>
+    
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;700;900&family=Lexend:wght@400;600;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
+    
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#ec5b13",
+                        "secondary-green": "#22c55e",
+                        "background-light": "#f8f6f6",
+                        "background-dark": "#221610",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend", "Public Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'float-delayed': 'float 8s ease-in-out infinite 1s',
+                        'float-slow': 'float 12s ease-in-out infinite 2s',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
+                        'slide-in-right': 'slideInRight 0.5s ease-out forwards',
+                        'bounce-subtle': 'bounceSubtle 2s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0) scale(1)' },
+                            '50%': { transform: 'translateY(-20px) scale(1.05)' },
+                        },
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        slideInRight: {
+                            '0%': { opacity: '0', transform: 'translateX(30px)' },
+                            '100%': { opacity: '1', transform: 'translateX(0)' },
+                        },
+                        bounceSubtle: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-5px)' },
+                        }
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        .floating-shape {
+            position: absolute;
+            z-index: 0;
+            opacity: 0.6;
+        }
+        .glow-text {
+            text-shadow: 0 0 20px rgba(236, 91, 19, 0.5);
+        }
+        .animate-delay-100 { animation-delay: 100ms; }
+        .animate-delay-200 { animation-delay: 200ms; }
+        .animate-delay-300 { animation-delay: 300ms; }
+        .animate-delay-400 { animation-delay: 400ms; }
+        .animate-delay-500 { animation-delay: 500ms; }
+        
+        .screen { display: none; }
+        .screen.active { display: flex; }
+        
+        /* Modal Background */
+        .modal-bg { display: none; }
+        .modal-bg.active { display: flex; }
+    </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen overflow-x-hidden">
+
+    <!-- Background Elements -->
+    <div class="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
+        <div class="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-900 to-primary/20"></div>
+        <div class="floating-shape top-10 left-[10%] w-24 h-24 rounded-full bg-yellow-400 blur-3xl animate-float"></div>
+        <div class="floating-shape top-1/4 right-[15%] w-32 h-32 rounded-full bg-purple-500 blur-3xl animate-float-delayed"></div>
+        <div class="floating-shape bottom-1/4 left-[5%] w-40 h-40 rounded-full bg-primary/40 blur-3xl animate-float-slow"></div>
+        <div class="absolute top-20 right-20 text-yellow-300 opacity-20 transform rotate-12 animate-pulse-slow">
+            <span class="material-symbols-outlined text-[120px]">brush</span>
+        </div>
+        <div class="absolute bottom-20 left-20 text-secondary-green opacity-20 transform -rotate-12 animate-float">
+            <span class="material-symbols-outlined text-[100px]">gesture</span>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-24 right-4 z-50 transform transition-all duration-300 translate-x-full bg-red-500/90 text-white px-6 py-3 rounded-xl shadow-lg border border-red-400 backdrop-blur-md flex items-center gap-3">
+        <span class="material-symbols-outlined">error</span>
+        <span id="toast-msg" class="font-medium">Error message</span>
+    </div>
+
+    <div class="relative flex h-auto min-h-screen w-full flex-col group/design-root">
+        
+        <!-- ====== NAVIGATION ====== -->
+        <header class="flex items-center justify-between whitespace-nowrap px-6 md:px-20 py-6 animate-fade-in-up flex-shrink-0">
+            <div class="flex items-center gap-3 text-white cursor-pointer" onclick="app.showScreen('home-screen')">
+                <div class="size-8 bg-primary rounded-lg flex items-center justify-center shadow-lg animate-bounce-subtle">
+                    <span class="material-symbols-outlined text-white">psychology</span>
+                </div>
+                <h2 class="text-white text-2xl font-black leading-tight tracking-tight">MindSync</h2>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <div class="hidden id-room-badge px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-white font-mono font-bold tracking-widest text-sm shadow-[0_0_15px_-3px_rgba(255,255,255,0.2)]">
+                    ROOM: <span id="nav-room-code" class="text-primary"></span>
+                </div>
+                <div id="nav-player-name" class="hidden text-slate-300 font-medium"></div>
+                <div class="bg-primary/20 border-2 border-primary rounded-full size-10 flex items-center justify-center text-primary hover:scale-110 transition-transform cursor-pointer" onclick="app.editName()">
+                    <span class="material-symbols-outlined">person</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ====== HOME SCREEN ====== -->
+        <main id="home-screen" class="screen active flex-1 flex-col items-center justify-center px-4 py-8 @container">
+            <div class="max-w-[800px] w-full text-center flex flex-col items-center gap-8">
+                <div class="flex flex-col gap-4 animate-fade-in-up">
+                    <h1 class="text-white text-6xl md:text-8xl font-black leading-tight tracking-tighter glow-text animate-pulse-slow">
+                        MindSync
+                    </h1>
+                    <h2 class="text-slate-200 text-lg md:text-2xl font-medium max-w-lg mx-auto leading-relaxed animate-fade-in-up animate-delay-100">
+                        Say the same word without planning. Connect your thoughts to win.
+                    </h2>
+                </div>
+
+                <!-- Name Input -->
+                <div class="w-full max-w-sm animate-fade-in-up animate-delay-200">
+                    <div class="relative group">
+                        <input id="player-name-input" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-2xl text-white focus:outline-0 focus:ring-4 focus:ring-primary/30 border-2 border-white/20 bg-white/10 backdrop-blur-md focus:border-primary h-14 px-6 text-lg font-bold transition-all placeholder:text-slate-400 placeholder:font-normal" placeholder="Enter your name" type="text" maxlength="15"/>
+                        <div class="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-primary transition-colors">
+                            <span class="material-symbols-outlined">badge</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center animate-fade-in-up animate-delay-300">
+                    <button onclick="app.createRoom()" class="group flex-1 flex min-w-[180px] cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-2xl h-16 px-8 bg-primary hover:scale-105 hover:shadow-[0_0_30px_-5px_rgba(236,91,19,0.6)] text-white text-lg font-extrabold transition-all duration-300">
+                        <span class="material-symbols-outlined group-hover:rotate-12 transition-transform">add_circle</span>
+                        <span>Create Room</span>
+                    </button>
+                    <button onclick="app.joinRoom()" class="group flex-1 flex min-w-[180px] cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-2xl h-16 px-8 bg-secondary-green hover:scale-105 hover:shadow-[0_0_30px_-5px_rgba(34,197,94,0.6)] text-white text-lg font-extrabold transition-all duration-300">
+                        <span class="material-symbols-outlined group-hover:scale-110 transition-transform">group_add</span>
+                        <span>Join Room</span>
+                    </button>
+                </div>
+
+                <!-- Room Code Input -->
+                <div class="flex flex-col gap-3 w-full max-w-sm mt-4 animate-fade-in-up animate-delay-400">
+                    <p class="text-slate-300 text-sm font-bold uppercase tracking-widest">Have a room code?</p>
+                    <div class="relative group">
+                        <input id="room-code-input" class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-2xl text-white focus:outline-0 focus:ring-4 focus:ring-secondary-green/30 border-2 border-white/20 bg-white/5 backdrop-blur-md focus:border-secondary-green h-16 placeholder:text-slate-500 px-6 text-xl text-center font-bold tracking-[0.5em] transition-all uppercase" maxlength="6" placeholder="CODE12" type="text" onkeyup="if(event.key === 'Enter') app.joinRoom()"/>
+                        <div class="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-secondary-green transition-colors">
+                            <span class="material-symbols-outlined">key</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- How it works cards -->
+            <div class="w-full px-4 md:px-0 mt-16 max-w-5xl mx-auto">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl p-8 flex flex-col gap-4 text-center items-center hover:bg-white/10 transition-colors group animate-fade-in-up animate-delay-100">
+                        <div class="size-14 rounded-2xl bg-yellow-400/20 text-yellow-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <span class="material-symbols-outlined text-3xl">lightbulb</span>
+                        </div>
+                        <h3 class="text-white text-xl font-bold">Think</h3>
+                        <p class="text-slate-400 leading-relaxed text-sm">Read the prompt and let your first instinct guide you to a single word.</p>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl p-8 flex flex-col gap-4 text-center items-center hover:bg-white/10 transition-colors group animate-fade-in-up animate-delay-200">
+                        <div class="size-14 rounded-2xl bg-primary/20 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <span class="material-symbols-outlined text-3xl">keyboard</span>
+                        </div>
+                        <h3 class="text-white text-xl font-bold">Type</h3>
+                        <p class="text-slate-400 leading-relaxed text-sm">Submit your word silently. No hints or gestures allowed!</p>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 backdrop-blur-md rounded-3xl p-8 flex flex-col gap-4 text-center items-center hover:bg-white/10 transition-colors group animate-fade-in-up animate-delay-300">
+                        <div class="size-14 rounded-2xl bg-secondary-green/20 text-secondary-green flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <span class="material-symbols-outlined text-3xl">sync</span>
+                        </div>
+                        <h3 class="text-white text-xl font-bold">Sync</h3>
+                        <p class="text-slate-400 leading-relaxed text-sm">Reveal the words. If they all match, your minds are truly synced!</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ====== LOBBY SCREEN ====== -->
+        <main id="lobby-screen" class="screen flex-1 flex-col items-center py-10 px-4 w-full max-w-5xl mx-auto">
+            <div class="w-full flex flex-col md:flex-row gap-8">
+                <!-- Players Area -->
+                <div class="flex-1 flex flex-col gap-6 animate-slide-in-right">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-3xl font-black text-white flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary text-4xl">groups</span>
+                            Players <span id="lobby-player-count" class="text-slate-400 text-xl font-bold">(1/8)</span>
+                        </h2>
+                        
+                        <button onclick="app.leaveRoom()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 font-bold transition-colors">
+                            <span class="material-symbols-outlined text-sm">logout</span> Leave
+                        </button>
+                    </div>
+                    
+                    <div id="lobby-players" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <!-- Player cards injected here -->
+                    </div>
+                </div>
+                
+                <!-- Settings Area -->
+                <div class="w-full md:w-[320px] shrink-0 flex flex-col gap-6 animate-fade-in-up animate-delay-200">
+                    <div class="bg-white/10 border border-white/20 backdrop-blur-xl rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+                        <div class="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                        
+                        <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-2 relative z-10">
+                            <span class="material-symbols-outlined">settings</span> Game Settings
+                        </h3>
+                        
+                        <div class="flex flex-col gap-5 relative z-10 host-only-settings opacity-50 pointer-events-none transition-all duration-300">
+                            <!-- Rounds -->
+                            <div class="flex flex-col gap-2">
+                                <div class="flex justify-between items-center">
+                                    <label class="text-slate-300 font-semibold text-sm">Number of Rounds</label>
+                                    <span id="setting-rounds-val" class="text-white font-bold bg-white/10 px-2 rounded-md">5</span>
+                                </div>
+                                <input id="setting-rounds" oninput="app.updateSettings()" type="range" min="1" max="10" value="5" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary">
+                            </div>
+                            
+                            <!-- Timer -->
+                            <div class="flex flex-col gap-2">
+                                <div class="flex justify-between items-center">
+                                    <label class="text-slate-300 font-semibold text-sm">Time per Round (sec)</label>
+                                    <span id="setting-time-val" class="text-white font-bold bg-white/10 px-2 rounded-md">30</span>
+                                </div>
+                                <input id="setting-time" oninput="app.updateSettings()" type="range" min="10" max="60" step="5" value="30" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary">
+                            </div>
+                            
+                            <p id="host-warning" class="text-yellow-400 text-xs mt-2 hidden text-center italic font-medium">Only the host can change settings.</p>
+                        </div>
+                        
+                        <div class="mt-8 pt-6 border-t border-white/10 relative z-10 text-center">
+                            <p class="text-slate-400 text-sm mb-4">Invite friends with code</p>
+                            <div class="flex items-center justify-between bg-black/40 rounded-xl p-3 border border-white/10 mb-6 cursor-pointer hover:bg-black/60 transition-colors group" onclick="app.copyRoomCode()">
+                                <div class="text-3xl font-black text-white tracking-[0.2em] font-mono" id="lobby-code-display">ABCDEF</div>
+                                <div class="p-2 bg-white/10 rounded-lg text-slate-300 group-hover:text-white transition-colors">
+                                    <span class="material-symbols-outlined" id="copy-icon">content_copy</span>
+                                </div>
+                            </div>
+                            
+                            <button id="btn-start-game" onclick="app.startGame()" class="w-full py-4 rounded-xl font-black text-lg text-white bg-slate-700 cursor-not-allowed transition-all duration-300 uppercase tracking-wider relative overflow-hidden group">
+                                <div class="absolute inset-0 bg-primary translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0 btn-start-bg"></div>
+                                <span class="relative z-10 flex items-center justify-center gap-2">
+                                    Wait for players
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ====== GAME SCREEN ====== -->
+        <main id="game-screen" class="screen flex-1 flex-col items-center justify-center px-4 w-full">
+            <div class="w-full max-w-2xl flex flex-col items-center gap-8 relative z-10">
+                
+                <!-- Round Info -->
+                <div class="flex justify-between w-full items-end">
+                    <div class="flex flex-col gap-1">
+                        <span class="text-primary font-bold uppercase tracking-widest text-sm" id="game-category">CATEGORY</span>
+                        <div class="text-white font-black text-xl bg-white/10 px-4 py-1.5 rounded-full border border-white/20">
+                            Round <span id="game-round-current">1</span>/<span id="game-round-total">5</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Timer -->
+                    <div class="relative w-20 h-20 flex items-center justify-center">
+                        <svg class="absolute inset-0 w-full h-full transform -rotate-90">
+                            <circle cx="40" cy="40" r="36" stroke="rgba(255,255,255,0.1)" stroke-width="8" fill="none" />
+                            <circle id="timer-circle" cx="40" cy="40" r="36" stroke="#ec5b13" stroke-width="8" fill="none" stroke-dasharray="226" stroke-dashoffset="0" class="transition-all duration-1000 ease-linear" />
+                        </svg>
+                        <div id="game-timer" class="text-white font-black text-2xl z-10">30</div>
+                    </div>
+                </div>
+                
+                <!-- Prompt -->
+                <div class="bg-white/10 border border-white/20 backdrop-blur-xl rounded-[2rem] p-8 md:p-12 w-full text-center shadow-2xl hover:shadow-[0_0_50px_-10px_rgba(236,91,19,0.3)] transition-shadow">
+                    <h2 id="game-prompt" class="text-3xl md:text-5xl font-black text-white leading-tight mb-8">
+                        Loading prompt...
+                    </h2>
+                    
+                    <form id="submission-form" onsubmit="event.preventDefault(); app.submitWord();" class="flex flex-col gap-4">
+                        <div class="relative group">
+                            <input id="word-input" class="form-input flex w-full flex-1 rounded-2xl text-white focus:outline-0 focus:ring-4 focus:ring-primary/30 border-2 border-white/30 bg-black/30 backdrop-blur-md focus:border-primary h-20 px-6 text-3xl font-bold tracking-wide transition-all text-center" placeholder="Type your word" type="text" autocomplete="off" />
+                        </div>
+                        <button type="submit" id="btn-submit" class="w-full h-16 rounded-xl bg-primary hover:bg-primary/90 text-white font-black text-xl transition-all shadow-[0_4px_20px_-5px_rgba(236,91,19,0.6)] cursor-pointer flex items-center justify-center gap-2 group/btn">
+                            Submit Word <span class="material-symbols-outlined group-hover/btn:translate-x-1 transition-transform">send</span>
+                        </button>
+                    </form>
+                    
+                    <div id="waiting-msg" class="hidden mt-6">
+                        <div class="flex items-center justify-center gap-3 text-secondary-green font-bold text-xl mb-4">
+                            <span class="material-symbols-outlined text-3xl">check_circle</span> Word Submitted!
+                        </div>
+                        <p class="text-slate-300">Waiting for other players...</p>
+                        
+                        <div class="flex justify-center mt-6 gap-2" id="submission-status">
+                            <!-- Player status bubbles injected here -->
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </main>
+
+        <!-- ====== RESULTS SCREEN ====== -->
+        <main id="results-screen" class="screen flex-1 flex-col items-center py-10 px-4 w-full">
+            <div class="w-full max-w-4xl mx-auto flex flex-col gap-8">
+                
+                <div class="text-center animate-fade-in-up">
+                    <h2 id="result-title" class="text-4xl md:text-6xl font-black text-white mb-2 glow-text">Mind Sync!</h2>
+                    <p id="result-subtitle" class="text-xl text-slate-300 font-medium">Everyone guessed the same word. Perfect harmony.</p>
+                </div>
+                
+                <div class="bg-white/10 border border-white/20 backdrop-blur-xl rounded-3xl p-6 md:p-10 shadow-2xl w-full animate-fade-in-up animate-delay-100">
+                    <div class="text-center mb-8">
+                        <span class="uppercase tracking-widest text-primary font-bold text-sm bg-primary/10 px-3 py-1 rounded-full">Prompt</span>
+                        <h3 id="result-prompt" class="text-2xl font-bold text-white mt-3">What did everyone say?</h3>
+                    </div>
+                    
+                    <div id="result-cards" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        <!-- Result cards injected here -->
+                    </div>
+                </div>
+                
+                <!-- Leaderboard (Compact) -->
+                <div class="bg-black/30 border border-white/10 rounded-3xl p-6 w-full animate-fade-in-up animate-delay-200">
+                    <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-yellow-400">emoji_events</span> Leaderboard
+                    </h3>
+                    <div id="results-leaderboard" class="flex flex-col gap-2">
+                        <!-- Rows injected here -->
+                    </div>
+                </div>
+                
+                <div class="flex justify-center mt-4 host-only-controls hidden animate-fade-in-up animate-delay-300">
+                    <button onclick="app.nextRound()" id="btn-next-round" class="px-8 h-16 rounded-xl bg-primary hover:bg-primary/90 text-white font-black text-xl transition-all shadow-[0_4px_20px_-5px_rgba(236,91,19,0.5)] flex items-center gap-2 group/next">
+                        Next Round <span class="material-symbols-outlined group-hover/next:translate-x-1 transition-transform">arrow_forward</span>
+                    </button>
+                    <button onclick="app.playAgain()" id="btn-play-again" class="hidden px-8 h-16 rounded-xl bg-secondary-green hover:bg-secondary-green/90 text-white font-black text-xl transition-all shadow-[0_4px_20px_-5px_rgba(34,197,94,0.5)] flex items-center gap-2 group/play">
+                        Play Again <span class="material-symbols-outlined group-hover/play:-rotate-180 transition-transform duration-500">replay</span>
+                    </button>
+                </div>
+                <div class="text-center text-slate-400 mt-4 non-host-message italic font-medium">
+                    Waiting for host to continue...
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="border-t border-white/10 bg-slate-900/80 backdrop-blur-2xl px-6 md:px-20 py-8 mt-auto flex-shrink-0 animate-fade-in-up">
+            <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+                <div class="flex items-center gap-2 text-white">
+                    <span class="material-symbols-outlined text-primary">psychology</span>
+                    <span class="font-black text-xl">MindSync</span>
+                </div>
+                <p class="text-slate-400 text-sm font-medium">© 2024 MindSync Multiplayer Games</p>
+                <div class="flex justify-center gap-4">
+                    <a class="text-slate-400 hover:text-white transition-colors" href="#"><span class="material-symbols-outlined">help</span></a>
+                    <a class="text-slate-400 hover:text-white transition-colors" href="#"><span class="material-symbols-outlined">code</span></a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-name" class="modal-bg fixed inset-0 z-50 bg-black/60 backdrop-blur-sm items-center justify-center p-4">
+        <div class="bg-slate-800 border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl transform transition-transform">
+            <h3 class="text-2xl font-black text-white mb-6">Enter Your Name</h3>
+            <input id="modal-name-input" type="text" class="w-full bg-white/5 border border-white/20 rounded-xl px-4 py-3 text-white mb-6 focus:border-primary outline-none focus:ring-2 focus:ring-primary/20" placeholder="CoolNickname123" maxlength="15" onkeyup="if(event.key === 'Enter') document.getElementById('btn-save-name').click()">
+            <div class="flex justify-end gap-3">
+                <button onclick="document.getElementById('modal-name').classList.remove('active')" class="px-5 py-2 rounded-lg text-slate-300 hover:bg-white/5 transition-colors font-medium">Cancel</button>
+                <button id="btn-save-name" onclick="app.saveName()" class="px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white font-bold transition-colors">Save Name</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.io & App Logic -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/app.js"></script>
+</body>
+</html>

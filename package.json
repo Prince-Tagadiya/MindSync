@@ -1,0 +1,14 @@
+{
+  "name": "mindsync",
+  "version": "1.0.0",
+  "description": "Think of the same word as your friends — the ultimate test of friendship and intuition.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4"
+  }
+}
