@@ -174,10 +174,96 @@ const app = {
         socket.emit('start-game');
     },
     
+    clearError: () => {
+        const input = document.getElementById('word-input');
+        const container = document.getElementById('word-input-container');
+        const icon = document.getElementById('word-error-icon');
+        const msg = document.getElementById('word-error-msg');
+        
+        if(!input || !container) return;
+        
+        input.classList.remove('border-red-500/50', 'text-red-100');
+        input.classList.add('border-white/10');
+        container.classList.remove('animate-shake');
+        icon.classList.add('hidden');
+        msg.classList.remove('flex');
+        msg.classList.add('hidden');
+        
+        // Reset indicators
+        ['status-short', 'status-empty', 'status-used'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) {
+               el.className = 'bg-white/5 border border-white/10 p-3 md:p-4 rounded-2xl flex flex-col items-center opacity-40 transition-all';
+               const iconEl = el.querySelector('span:nth-child(1)');
+               const textEl = el.querySelector('span:nth-child(2)');
+               if(iconEl) iconEl.className = 'material-symbols-outlined text-slate-400 mb-1';
+               if(textEl) textEl.className = 'text-[9px] md:text-[10px] uppercase font-black tracking-widest text-slate-500 text-center';
+            }
+        });
+    },
+
+    showErrorPhase: (type, text) => {
+        app.clearError();
+        
+        const input = document.getElementById('word-input');
+        const container = document.getElementById('word-input-container');
+        const icon = document.getElementById('word-error-icon');
+        const msg = document.getElementById('word-error-msg');
+        const textEl = document.getElementById('word-error-text');
+        
+        if(!input || !container) return;
+
+        // Trigger animation
+        void container.offsetWidth; // reset animation
+        container.classList.add('animate-shake');
+        input.classList.remove('border-white/10', 'focus:border-primary/40');
+        input.classList.add('border-red-500/50', 'text-red-100');
+        icon.classList.remove('hidden');
+        
+        textEl.textContent = text;
+        msg.classList.remove('hidden');
+        msg.classList.add('flex');
+        
+        // Highlight indicator
+        const targetId = type === 'empty' ? 'status-empty' : (type === 'short' ? 'status-short' : 'status-used');
+        const el = document.getElementById(targetId);
+        if(el) {
+            el.className = 'bg-primary/20 border border-primary/40 p-3 md:p-4 rounded-2xl flex flex-col items-center shadow-lg shadow-primary/5 transition-all';
+            const iconEl = el.querySelector('span:nth-child(1)');
+            const statusTextEl = el.querySelector('span:nth-child(2)');
+            if(iconEl) iconEl.className = 'material-symbols-outlined text-primary mb-1';
+            if(statusTextEl) statusTextEl.className = 'text-[9px] md:text-[10px] uppercase font-black tracking-widest text-primary text-center';
+        }
+    },
+
     submitWord: () => {
         const input = document.getElementById('word-input');
         const word = input.value.trim();
-        if (!word) return;
+        
+        if (!word) {
+            app.showErrorPhase('empty', 'Input is empty. Please enter a word.');
+            return;
+        }
+        
+        if (word.length < 2) {
+            app.showErrorPhase('short', 'Word is too short. minimum 2 characters.');
+            return;
+        }
+        
+        let alreadyUsed = false;
+        STATE.history.forEach(round => {
+            const mySub = round.submissions.find(s => s.id === socket.id);
+            if (mySub && mySub.word.toLowerCase() === word.toLowerCase()) {
+                alreadyUsed = true;
+            }
+        });
+        
+        if (alreadyUsed) {
+            app.showErrorPhase('used', 'Word already used in a previous round.');
+            return;
+        }
+        
+        app.clearError();
         
         STATE.myWord = word;
         socket.emit('submit-word', { word });
@@ -596,6 +682,7 @@ socket.on('round-start', (data) => {
     STATE.totalRounds = data.totalRounds;
     
     // Reset game screen
+    app.clearError();
     document.getElementById('submit-section').classList.remove('hidden');
     document.getElementById('waiting-msg').classList.add('hidden');
     const input = document.getElementById('word-input');

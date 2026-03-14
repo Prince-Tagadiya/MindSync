@@ -40,15 +40,32 @@
                         'avatarIdle': 'avatarIdle 3s ease-in-out infinite',
                         'slow-bounce': 'bounce 3s infinite',
                         'pulse-glow': 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
+                        'fade-in-slide-up': 'fade-in-slide-up 0.4s ease-out forwards',
+                        'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
                     },
                     keyframes: {
                         float: {
                             '0%, 100%': { transform: 'translateY(0) scale(1)' },
                             '50%': { transform: 'translateY(-20px) scale(1.05)' },
                         },
+                        shake: {
+                            '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+                            '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+                            '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' },
+                            '40%, 60%': { transform: 'translate3d(4px, 0, 0)' },
+                        },
                         'pulse-glow': {
                             '0%, 100%': { opacity: 1, transform: 'scale(1)' },
                             '50%': { opacity: 0.7, transform: 'scale(1.05)', filter: 'brightness(1.2)' },
+                        },
+                        'fade-in-slide-up': {
+                            '0%': { opacity: 0, transform: 'translateY(10px)' },
+                            '100%': { opacity: 1, transform: 'translateY(0)' },
+                        },
+                        'pulse-soft': {
+                            '0%, 100%': { transform: 'scale(1)', opacity: 1 },
+                            '50%': { transform: 'scale(1.15)', opacity: 0.8 },
                         },
                         fadeInUp: {
                             '0%': { opacity: '0', transform: 'translateY(20px)' },
@@ -367,14 +384,45 @@
                         </div>
 
                         <!-- Input Card -->
-                        <form id="submission-form" onsubmit="event.preventDefault(); app.submitWord();" class="flex flex-col gap-10">
-                            <div class="relative group input-glow transition-all duration-500">
-                                <input id="word-input" class="w-full bg-white/5 border-2 border-white/10 focus:border-primary/40 rounded-[2rem] px-6 md:px-10 py-8 md:py-10 text-2xl md:text-4xl font-black text-center focus:ring-8 focus:ring-primary/5 transition-all outline-none shadow-2xl backdrop-blur-md placeholder:text-white/10 text-white" placeholder="Your word..." type="text" autocomplete="off"/>
-                                <div class="absolute -inset-1 bg-gradient-to-r from-primary/30 to-blue-500/30 rounded-[2.1rem] blur opacity-0 group-focus-within:opacity-100 transition-opacity pointer-events-none"></div>
+                        <form id="submission-form" onsubmit="event.preventDefault(); app.submitWord();" class="flex flex-col gap-6 w-full">
+                            <div class="w-full space-y-6">
+                                <!-- Error Input Container -->
+                                <div id="word-input-container" class="relative group input-glow transition-all duration-500">
+                                    <label class="block text-left text-slate-400 text-xs font-black uppercase tracking-widest mb-3 ml-2">Word Input</label>
+                                    <div class="relative">
+                                        <input id="word-input" class="w-full bg-white/5 border-2 border-white/10 rounded-[2rem] px-6 md:px-10 py-8 md:py-10 text-2xl md:text-4xl font-black text-center outline-none shadow-2xl backdrop-blur-md placeholder:text-white/10 text-white focus:border-primary/40 focus:ring-8 focus:ring-primary/5 transition-all" placeholder="Enter your word..." type="text" autocomplete="off" oninput="app.clearError()"/>
+                                        <div class="absolute -inset-1 bg-gradient-to-r from-primary/30 to-blue-500/30 rounded-[2.1rem] blur opacity-0 group-focus-within:opacity-100 transition-opacity pointer-events-none" id="word-input-glow"></div>
+                                        <div id="word-error-icon" class="absolute right-8 top-1/2 -translate-y-1/2 text-red-500 hidden z-10">
+                                            <span class="material-symbols-outlined text-4xl animate-pulse-soft">error</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Error Message -->
+                                <div id="word-error-msg" class="bg-red-500/10 border border-red-500/20 py-4 px-6 rounded-2xl items-center gap-3 justify-center shadow-lg animate-fade-in-slide-up hidden">
+                                    <span class="material-symbols-outlined text-red-400">warning</span>
+                                    <p id="word-error-text" class="text-red-300 font-bold">Word already used. Try a different word.</p>
+                                </div>
+                                
+                                <!-- Status Indicators -->
+                                <div class="grid grid-cols-3 gap-2 md:gap-4" id="word-status-indicators">
+                                    <div id="status-short" class="bg-white/5 border border-white/10 p-3 md:p-4 rounded-2xl flex flex-col items-center opacity-40 transition-all">
+                                        <span class="material-symbols-outlined text-slate-400 mb-1">block</span>
+                                        <span class="text-[9px] md:text-[10px] uppercase font-black tracking-widest text-slate-500 text-center">Too Short</span>
+                                    </div>
+                                    <div id="status-empty" class="bg-white/5 border border-white/10 p-3 md:p-4 rounded-2xl flex flex-col items-center opacity-40 transition-all">
+                                        <span class="material-symbols-outlined text-slate-400 mb-1">space_bar</span>
+                                        <span class="text-[9px] md:text-[10px] uppercase font-black tracking-widest text-slate-500 text-center">Empty Input</span>
+                                    </div>
+                                    <div id="status-used" class="bg-white/5 border border-white/10 p-3 md:p-4 rounded-2xl flex flex-col items-center opacity-40 transition-all">
+                                        <span class="material-symbols-outlined text-slate-400 mb-1">history</span>
+                                        <span class="text-[9px] md:text-[10px] uppercase font-black tracking-widest text-slate-500 text-center">Already Used</span>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Submit Section -->
-                            <div class="flex flex-col items-center gap-10 hidden" id="submit-section">
+                            <div class="flex items-center justify-center w-full hidden mt-4" id="submit-section">
                                 <button type="submit" id="btn-submit" class="group relative flex items-center justify-center gap-4 bg-primary hover:bg-primary/90 text-white font-black py-5 md:py-6 px-10 md:px-16 rounded-2xl text-xl md:text-2xl shadow-2xl shadow-primary/30 transition-all transform hover:scale-105 active:scale-95 overflow-hidden w-full md:w-auto">
                                     <span>Submit Word</span>
                                     <span class="material-symbols-outlined text-3xl">send</span>
