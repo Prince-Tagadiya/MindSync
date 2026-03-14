@@ -10,6 +10,8 @@ const STATE = {
     currentRound: 0,
     totalRounds: 5,
     myWord: null,
+    history: [],
+    submittedPlayers: new Set()
 };
 
 // Start by setting the name in UI
@@ -57,14 +59,37 @@ const app = {
         const badge = document.querySelector('.id-room-badge');
         const navName = document.getElementById('nav-player-name');
         
-        badge.classList.add('hidden');
-        navName.classList.add('hidden');
+        const globalHeader = document.getElementById('global-header');
+        const globalFooter = document.getElementById('global-footer');
         
-        if (screenId !== 'home-screen') {
-            badge.classList.remove('hidden');
-            navName.classList.remove('hidden');
-            navName.textContent = STATE.playerName;
-            document.getElementById('nav-room-code').textContent = STATE.roomCode;
+        if(badge && navName) {
+            badge.classList.add('hidden');
+            navName.classList.add('hidden');
+        }
+        
+        if (screenId === 'game-screen') {
+            if(globalHeader) globalHeader.classList.add('hidden');
+            if(globalFooter) globalFooter.classList.add('hidden');
+            document.querySelectorAll('.screen-only-bg').forEach(bg => {
+                bg.classList.remove('opacity-0');
+                bg.classList.add('opacity-100');
+            });
+            document.getElementById('status-room-code').textContent = '#' + STATE.roomCode;
+        } else {
+            if(globalHeader) globalHeader.classList.remove('hidden');
+            if(globalFooter) globalFooter.classList.remove('hidden');
+            document.querySelectorAll('.screen-only-bg').forEach(bg => {
+                bg.classList.remove('opacity-100');
+                bg.classList.add('opacity-0');
+            });
+            
+            if (screenId !== 'home-screen' && badge && navName) {
+                badge.classList.remove('hidden');
+                navName.classList.remove('hidden');
+                navName.textContent = STATE.playerName;
+                const roomCodeEl = document.getElementById('nav-room-code');
+                if(roomCodeEl) roomCodeEl.textContent = STATE.roomCode;
+            }
         }
     },
     
@@ -158,8 +183,14 @@ const app = {
         socket.emit('submit-word', { word });
         
         // UI updates
-        document.getElementById('submission-form').classList.add('hidden');
+        input.setAttribute('disabled', 'true');
+        input.classList.add('opacity-50', 'cursor-not-allowed');
+        document.getElementById('submit-section').classList.add('hidden');
         document.getElementById('waiting-msg').classList.remove('hidden');
+        
+        // Mark myself as submitted if not already handled
+        STATE.submittedPlayers.add(socket.id);
+        app.renderSubmissionStatus();
     },
     
     nextRound: () => {
@@ -253,16 +284,107 @@ const app = {
         }
     },
     
-    renderSubmissionStatus: (submittedCount, totalCount) => {
+    renderSubmissionStatus: () => {
         const container = document.getElementById('submission-status');
+        if(!container) return;
+        
         container.innerHTML = '';
-        for (let i = 0; i < totalCount; i++) {
-            if (i < submittedCount) {
-                container.innerHTML += `<div class="w-12 h-3 rounded-full bg-secondary-green shadow-[0_0_10px_rgba(34,197,94,0.5)] transition-all"></div>`;
+        
+        STATE.players.forEach((p, i) => {
+            const hasSubmitted = STATE.submittedPlayers.has(p.id);
+            const avatar = AVATARS[p.avatar % AVATARS.length];
+            const seed = encodeURIComponent(p.name + avatar.seedSuffix);
+            const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
+            
+            const delay = (i % 4) * 0.1;
+            
+            if (hasSubmitted) {
+                container.innerHTML += `
+                <div class="relative group">
+                    <div class="w-14 h-14 rounded-full border-4 border-primary bg-primary/20 flex items-center justify-center overflow-hidden shadow-[0_0_20px_rgba(236,91,19,0.4)] animate-pulse-glow" style="animation-delay: ${delay}s">
+                        <img alt="${p.name}" class="w-full h-full object-cover" src="${avatarUrl}"/>
+                    </div>
+                    <div class="absolute -top-1 -right-1 bg-green-500 w-5 h-5 rounded-full border-2 border-[#0a0f1d] flex items-center justify-center">
+                        <span class="material-symbols-outlined text-[10px] text-white font-bold">check</span>
+                    </div>
+                </div>`;
             } else {
-                container.innerHTML += `<div class="w-12 h-3 rounded-full bg-slate-700 transition-all"></div>`;
+                container.innerHTML += `
+                <div class="relative group grayscale opacity-30">
+                    <div class="w-14 h-14 rounded-full border-4 border-white/20 bg-white/5 flex items-center justify-center overflow-hidden">
+                        <img alt="${p.name}" class="w-full h-full object-cover" src="${avatarUrl}"/>
+                    </div>
+                </div>`;
             }
+        });
+    },
+    
+    renderRoundHistory: () => {
+        const historyContainer = document.getElementById('round-history-list');
+        if(!historyContainer) return;
+        
+        if (STATE.history.length === 0) {
+            historyContainer.innerHTML = `
+                <div class="border-2 border-dashed border-white/10 p-8 rounded-3xl flex flex-col items-center justify-center gap-3 text-center h-full min-h-[200px] opacity-70">
+                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-500 animate-bounce-subtle">
+                        <span class="material-symbols-outlined">psychology</span>
+                    </div>
+                    <p class="text-slate-500 text-sm font-bold italic">No rounds completed yet...</p>
+                </div>
+            `;
+            return;
         }
+        
+        // Reverse history to show latest first
+        const revHistory = [...STATE.history].reverse();
+        let html = '';
+        
+        revHistory.forEach(round => {
+            const isMatch = round.allMatch || (round.submissions.length > 2 && round.submissions.some(s => s.points > 0)); 
+            // Simplifying "isMatch" logic for the card display
+            
+            let mySubHtml = '';
+            let otherHtml = '';
+            
+            const myData = round.submissions.find(s => s.id === socket.id);
+            const myWord = myData && myData.word !== '(no answer)' ? myData.word.toUpperCase() : 'NO ANSWER';
+            
+            if (isMatch) {
+                html += `
+                <div class="bg-white/5 p-5 rounded-3xl border border-white/10 shadow-xl group hover:border-primary/30 transition-all backdrop-blur-md">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Round ${String(round.round).padStart(2,'0')} • ${round.category}</span>
+                        <div class="px-3 py-1 bg-green-500/10 text-green-400 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border border-green-500/20">
+                            <span class="material-symbols-outlined text-xs">verified</span> MATCHED
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1 text-center bg-white/5 p-3 rounded-2xl border border-white/5">
+                            <p class="text-[9px] font-bold text-slate-500 uppercase mb-1">WORD</p>
+                            <p class="font-black text-primary text-lg truncate">${myWord}</p>
+                        </div>
+                    </div>
+                </div>`;
+            } else {
+                html += `
+                <div class="bg-white/5 p-5 rounded-3xl border border-white/10 shadow-xl group hover:border-primary/30 transition-all opacity-70 backdrop-blur-md">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Round ${String(round.round).padStart(2,'0')} • ${round.category}</span>
+                        <div class="px-3 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-black uppercase flex items-center gap-1 border border-primary/20">
+                            <span class="material-symbols-outlined text-xs">close</span> DIVERGED
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1 text-center bg-white/5 p-3 rounded-2xl border border-white/5">
+                            <p class="text-[9px] font-bold text-slate-500 uppercase mb-1">YOU</p>
+                            <p class="font-black text-slate-200 text-lg truncate">${myWord}</p>
+                        </div>
+                    </div>
+                </div>`;
+            }
+        });
+        
+        historyContainer.innerHTML = html;
     },
 
     renderResults: (data) => {
@@ -440,7 +562,7 @@ socket.on('room-joined', ({ code, room }) => {
     STATE.isHost = false;
     STATE.host = room.host;
     STATE.players = room.players;
-    STATE.settings = room.settings;
+    STATE.history = [];
     
     document.getElementById('lobby-code-display').textContent = code;
     document.getElementById('setting-rounds-val').textContent = room.settings.rounds;
@@ -466,11 +588,16 @@ socket.on('settings-updated', ({ settings, room }) => {
 
 socket.on('round-start', (data) => {
     STATE.myWord = null;
+    STATE.submittedPlayers.clear();
+    STATE.currentRound = data.round;
+    STATE.totalRounds = data.totalRounds;
     
     // Reset game screen
-    document.getElementById('submission-form').classList.remove('hidden');
+    document.getElementById('submit-section').classList.remove('hidden');
     document.getElementById('waiting-msg').classList.add('hidden');
     const input = document.getElementById('word-input');
+    input.removeAttribute('disabled');
+    input.classList.remove('opacity-50', 'cursor-not-allowed');
     input.value = '';
     
     // Set text
@@ -488,7 +615,18 @@ socket.on('round-start', (data) => {
     
     setTimeout(() => { circle.style.transition = 'all 1s linear'; }, 50);
     
-    app.renderSubmissionStatus(0, STATE.players.length);
+    // Update my profile sidebar
+    const me = STATE.players.find(p => p.id === socket.id);
+    if(me) {
+        const myScore = me.score || 0;
+        document.getElementById('sidebar-my-score').textContent = myScore;
+        const myAvatar = AVATARS[me.avatar % AVATARS.length];
+        const seed = encodeURIComponent(me.name + myAvatar.seedSuffix);
+        document.getElementById('sidebar-my-avatar').innerHTML = `<img class="w-full h-full rounded-full object-cover" src="https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent" />`;
+    }
+    
+    app.renderRoundHistory();
+    app.renderSubmissionStatus();
     app.showScreen('game-screen');
     
     setTimeout(() => input.focus(), 500);
@@ -520,12 +658,29 @@ socket.on('timer-tick', ({ timeLeft }) => {
 });
 
 socket.on('player-submitted', ({ playerId, submittedCount, totalPlayers }) => {
+    STATE.submittedPlayers.add(playerId);
+    
     if (document.getElementById('game-screen').classList.contains('active')) {
-        app.renderSubmissionStatus(submittedCount, totalPlayers);
+        app.renderSubmissionStatus();
     }
 });
 
 socket.on('round-results', (data) => {
+    // Add to history
+    STATE.history.push({
+        round: STATE.currentRound,
+        category: data.prompt.category,
+        prompt: data.prompt.prompt,
+        allMatch: data.allMatch,
+        submissions: data.submissions
+    });
+    
+    // Update player scores
+    data.submissions.forEach(sub => {
+        const p = STATE.players.find(x => x.id === sub.id);
+        if(p) p.score = sub.score;
+    });
+    
     app.renderResults(data);
     app.showScreen('results-screen');
 });
