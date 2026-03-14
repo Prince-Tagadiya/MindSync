@@ -450,10 +450,13 @@ const app = {
             let playersHtml = '';
             group.forEach(player => {
                 const avatar = AVATARS[player.avatar % AVATARS.length];
+                const seed = encodeURIComponent(player.name + avatar.seedSuffix);
+                const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
+                
                 playersHtml += `
-                    <div class="flex items-center gap-2 bg-black/50 rounded-full pr-4 p-1 border border-white/5">
-                        <div class="size-8 rounded-full ${avatar.color} flex items-center justify-center shrink-0">
-                            <span class="material-symbols-outlined text-white text-sm">${avatar.icon}</span>
+                    <div class="flex items-center gap-2 bg-black/50 rounded-full pr-4 pb-1 pt-1 pl-1 border border-white/5">
+                        <div class="size-8 rounded-full bg-gradient-to-tr ${avatar.color} p-0.5 shrink-0 shadow-lg">
+                            <img src="${avatarUrl}" class="w-full h-full rounded-full bg-slate-800 object-cover" />
                         </div>
                         <span class="text-slate-200 text-sm font-bold truncate">${player.name}</span>
                         ${player.points > 0 ? `<span class="text-xs font-black text-yellow-400 ml-auto">+${player.points}</span>` : ''}
@@ -609,11 +612,12 @@ socket.on('round-start', (data) => {
     
     // Reset timer circle
     const circle = document.getElementById('timer-circle');
-    circle.style.transition = 'none';
-    circle.style.strokeDashoffset = '0';
-    circle.style.stroke = '#22c55e'; // Green start
-    
-    setTimeout(() => { circle.style.transition = 'all 1s linear'; }, 50);
+    if (circle) {
+        circle.style.transition = 'none';
+        circle.style.strokeDashoffset = '0';
+        circle.style.stroke = '#22c55e'; // Green start
+        setTimeout(() => { circle.style.transition = 'all 1s linear'; }, 50);
+    }
     
     // Update my profile sidebar
     const me = STATE.players.find(p => p.id === socket.id);
@@ -636,24 +640,35 @@ socket.on('timer-tick', ({ timeLeft }) => {
     const timeEl = document.getElementById('game-timer');
     const circle = document.getElementById('timer-circle');
     
-    timeEl.textContent = timeLeft;
+    if (timeEl) timeEl.textContent = timeLeft;
     
-    // Calculate dashboard offset (max 226)
-    const maxOffset = 226;
-    const progress = 1 - (timeLeft / STATE.settings.timePerRound);
-    circle.style.strokeDashoffset = progress * maxOffset;
-    
-    // Color change based on time
-    if (timeLeft <= 5) {
-        timeEl.classList.add('text-red-500', 'animate-bounce');
-        circle.style.stroke = '#ef4444'; // Red
-    } else if (timeLeft <= 10) {
-        timeEl.classList.add('text-yellow-400');
-        timeEl.classList.remove('text-red-500', 'animate-bounce');
-        circle.style.stroke = '#eab308'; // Yellow
-    } else {
-        timeEl.classList.remove('text-red-500', 'text-yellow-400', 'animate-bounce');
-        circle.style.stroke = '#22c55e'; // Green
+    if (circle) {
+        // Calculate dashboard offset (max 226)
+        const maxOffset = 226;
+        const progress = 1 - (timeLeft / STATE.settings.timePerRound);
+        circle.style.strokeDashoffset = progress * maxOffset;
+        
+        // Color change based on time
+        if (timeLeft <= 5) {
+            circle.style.stroke = '#ef4444'; // Red
+        } else if (timeLeft <= 10) {
+            circle.style.stroke = '#eab308'; // Yellow
+        } else {
+            circle.style.stroke = '#22c55e'; // Green
+        }
+    }
+
+    if (timeEl) {
+        if (timeLeft <= 5) {
+            timeEl.classList.add('text-red-500', 'animate-pulse');
+            timeEl.classList.remove('text-primary', 'text-yellow-400', 'animate-bounce');
+        } else if (timeLeft <= 10) {
+            timeEl.classList.add('text-yellow-400');
+            timeEl.classList.remove('text-primary', 'text-red-500', 'animate-pulse', 'animate-bounce');
+        } else {
+            timeEl.classList.add('text-primary');
+            timeEl.classList.remove('text-red-500', 'text-yellow-400', 'animate-pulse', 'animate-bounce');
+        }
     }
 });
 
