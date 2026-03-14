@@ -367,6 +367,11 @@
                             <span class="material-symbols-outlined text-primary text-sm font-bold">timer</span>
                             <span class="text-xs font-bold text-slate-300 transform transition-transform" id="game-timer-wrapper"><span id="game-timer" class="text-primary font-mono text-sm">30</span></span>
                         </div>
+                        <div class="w-px h-4 bg-white/10 hidden sm:block"></div>
+                        <div class="hidden sm:flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary text-sm font-bold">groups</span>
+                            <span class="text-xs font-bold text-slate-300">Ready: <span class="text-primary" id="players-ready-count">0/0</span></span>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -431,17 +436,12 @@
                             </div>
                         </form>
                         
-                        <div id="waiting-msg" class="hidden flex-col items-center gap-8 animate-fade-in-up stagger-2">
+                        <div id="waiting-msg" class="hidden flex-col items-center gap-8 animate-fade-in-up stagger-2 mt-10">
                             <div class="flex flex-col items-center gap-2">
                                 <div class="flex items-center justify-center gap-3 text-secondary-green font-bold text-2xl mb-2">
                                     <span class="material-symbols-outlined text-4xl">check_circle</span> Word Submitted!
                                 </div>
                                 <p class="text-sm font-bold text-slate-500 tracking-wider uppercase mb-2">Waiting for others to sync...</p>
-                            </div>
-
-                            <!-- Player Status Avatars -->
-                            <div class="flex flex-wrap justify-center gap-4 p-5 bg-white/5 backdrop-blur-md rounded-[2rem] border border-white/10 shadow-xl" id="submission-status">
-                                <!-- Injected by JS -->
                             </div>
                         </div>
 
@@ -455,7 +455,7 @@
                             <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
                                 <span class="material-symbols-outlined">history</span>
                             </div>
-                            <h3 class="font-black text-xl tracking-tight text-white">Round History</h3>
+                            <h3 class="font-black text-xl tracking-tight text-white">Guess History</h3>
                         </div>
                         <div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary animate-pulse">
                             <span class="relative flex h-2 w-2">
@@ -478,23 +478,9 @@
                     
                     <!-- Profile Info at bottom of Sidebar -->
                     <div class="mt-auto pt-6 border-t border-white/10 shrink-0">
-                        <div class="bg-white/5 rounded-2xl p-4 flex items-center justify-between border border-white/10">
-                            <div class="flex items-center gap-3">
-                                <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 p-0.5" id="sidebar-my-avatar">
-                                    <img alt="User avatar" class="w-full h-full rounded-full object-cover" src=""/>
-                                </div>
-                                <div class="flex flex-col">
-                                    <p class="font-black text-sm text-white truncate max-w-[120px]" id="sidebar-my-name">You</p>
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e]"></span>
-                                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Connected</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <p class="text-[10px] font-black text-slate-500 uppercase">Current Score</p>
-                                <p class="text-xl font-black text-primary" id="sidebar-my-score">0</p>
-                            </div>
+                        <div class="flex items-center justify-center gap-2 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                            <span class="material-symbols-outlined text-base">info</span>
+                            <span>Points awarded for matching words</span>
                         </div>
                     </div>
                 </aside>

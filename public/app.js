@@ -371,106 +371,101 @@ const app = {
     },
     
     renderSubmissionStatus: () => {
-        const container = document.getElementById('submission-status');
-        if(!container) return;
+        const readyEl = document.getElementById('players-ready-count');
+        if (readyEl) {
+            readyEl.textContent = `${STATE.submittedPlayers.size}/${STATE.players.length}`;
+        }
         
-        container.innerHTML = '';
-        
-        STATE.players.forEach((p, i) => {
-            const hasSubmitted = STATE.submittedPlayers.has(p.id);
-            const avatar = AVATARS[p.avatar % AVATARS.length];
-            const seed = encodeURIComponent(p.name + avatar.seedSuffix);
-            const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
-            
-            const delay = (i % 4) * 0.1;
-            
-            if (hasSubmitted) {
-                container.innerHTML += `
-                <div class="relative group">
-                    <div class="w-14 h-14 rounded-full border-4 border-primary bg-primary/20 flex items-center justify-center overflow-hidden shadow-[0_0_20px_rgba(236,91,19,0.4)] animate-pulse-glow" style="animation-delay: ${delay}s">
-                        <img alt="${p.name}" class="w-full h-full object-cover" src="${avatarUrl}"/>
-                    </div>
-                    <div class="absolute -top-1 -right-1 bg-green-500 w-5 h-5 rounded-full border-2 border-[#0a0f1d] flex items-center justify-center">
-                        <span class="material-symbols-outlined text-[10px] text-white font-bold">check</span>
-                    </div>
-                </div>`;
-            } else {
-                container.innerHTML += `
-                <div class="relative group grayscale opacity-30">
-                    <div class="w-14 h-14 rounded-full border-4 border-white/20 bg-white/5 flex items-center justify-center overflow-hidden">
-                        <img alt="${p.name}" class="w-full h-full object-cover" src="${avatarUrl}"/>
-                    </div>
-                </div>`;
-            }
-        });
+        // Let renderRoundHistory handle updating the sidebar
+        app.renderRoundHistory();
     },
     
     renderRoundHistory: () => {
         const historyContainer = document.getElementById('round-history-list');
         if(!historyContainer) return;
         
-        if (STATE.history.length === 0) {
-            historyContainer.innerHTML = `
-                <div class="border-2 border-dashed border-white/10 p-8 rounded-3xl flex flex-col items-center justify-center gap-3 text-center h-full min-h-[200px] opacity-70">
-                    <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-500 animate-bounce-subtle">
-                        <span class="material-symbols-outlined">psychology</span>
-                    </div>
-                    <p class="text-slate-500 text-sm font-bold italic">No rounds completed yet...</p>
-                </div>
-            `;
-            return;
-        }
-        
-        // Reverse history to show latest first
-        const revHistory = [...STATE.history].reverse();
         let html = '';
         
-        revHistory.forEach(round => {
-            const isMatch = round.allMatch || (round.submissions.length > 2 && round.submissions.some(s => s.points > 0)); 
-            // Simplifying "isMatch" logic for the card display
+        // 1. Render past history rounds
+        STATE.history.forEach(round => {
+            // Collect unique words
+            const uniqueWords = new Set();
+            round.submissions.forEach(s => {
+                if (s.word !== '(no answer)') {
+                    uniqueWords.add(s.word);
+                }
+            });
             
-            let mySubHtml = '';
-            let otherHtml = '';
+            let wordsHtml = '';
+            Array.from(uniqueWords).forEach(w => {
+                wordsHtml += `<span class="px-5 py-2.5 bg-white/5 text-slate-300 rounded-full border border-white/10 text-xs font-black uppercase tracking-tight">${w}</span>`;
+            });
+            if (uniqueWords.size === 0) {
+                wordsHtml += `<span class="px-5 py-2.5 bg-white/5 text-slate-500 rounded-full border border-white/10 text-xs font-black uppercase tracking-tight italic">No answers</span>`;
+            }
             
-            const myData = round.submissions.find(s => s.id === socket.id);
-            const myWord = myData && myData.word !== '(no answer)' ? myData.word.toUpperCase() : 'NO ANSWER';
+            html += `
+            <div class="space-y-4` + (STATE.history.indexOf(round) === 0 ? '' : ' mt-6') + `">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Round ${String(round.round).padStart(2,'0')}</span>
+                    <div class="h-px bg-white/10 flex-1 ml-4"></div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    ${wordsHtml}
+                </div>
+            </div>`;
+        });
+        
+        // 2. Render current round
+        let currentPlayersHtml = '';
+        STATE.players.forEach(p => {
+            const hasSubmitted = STATE.submittedPlayers.has(p.id);
+            const avatar = AVATARS[p.avatar % AVATARS.length];
+            const seed = encodeURIComponent(p.name + avatar.seedSuffix);
+            const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
+            const isMe = p.id === socket.id;
             
-            if (isMatch) {
-                html += `
-                <div class="bg-white/5 p-5 rounded-3xl border border-white/10 shadow-xl group hover:border-primary/30 transition-all backdrop-blur-md">
-                    <div class="flex justify-between items-center mb-4">
-                        <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Round ${String(round.round).padStart(2,'0')} • ${round.category}</span>
-                        <div class="px-3 py-1 bg-green-500/10 text-green-400 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border border-green-500/20">
-                            <span class="material-symbols-outlined text-xs">verified</span> MATCHED
-                        </div>
+            if (hasSubmitted) {
+                const displayWord = isMe && STATE.myWord ? STATE.myWord : 'Ready';
+                currentPlayersHtml += `
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full border-2 border-primary shadow-lg overflow-hidden shrink-0">
+                        <img alt="User avatar" class="w-full h-full object-cover" src="${avatarUrl}"/>
                     </div>
-                    <div class="flex items-center gap-4">
-                        <div class="flex-1 text-center bg-white/5 p-3 rounded-2xl border border-white/5">
-                            <p class="text-[9px] font-bold text-slate-500 uppercase mb-1">WORD</p>
-                            <p class="font-black text-primary text-lg truncate">${myWord}</p>
-                        </div>
+                    <div class="flex-1 bg-primary/10 p-4 rounded-2xl border border-primary/20 text-white font-black text-sm flex items-center justify-between overflow-hidden">
+                        <span class="uppercase tracking-wide truncate">${displayWord}</span>
+                        <span class="material-symbols-outlined text-primary text-xl shrink-0">check_circle</span>
                     </div>
                 </div>`;
             } else {
-                html += `
-                <div class="bg-white/5 p-5 rounded-3xl border border-white/10 shadow-xl group hover:border-primary/30 transition-all opacity-70 backdrop-blur-md">
-                    <div class="flex justify-between items-center mb-4">
-                        <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Round ${String(round.round).padStart(2,'0')} • ${round.category}</span>
-                        <div class="px-3 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-black uppercase flex items-center gap-1 border border-primary/20">
-                            <span class="material-symbols-outlined text-xs">close</span> DIVERGED
-                        </div>
+                currentPlayersHtml += `
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden shrink-0">
+                        <img alt="User avatar" class="w-full h-full object-cover grayscale opacity-50" src="${avatarUrl}"/>
                     </div>
-                    <div class="flex items-center gap-4">
-                        <div class="flex-1 text-center bg-white/5 p-3 rounded-2xl border border-white/5">
-                            <p class="text-[9px] font-bold text-slate-500 uppercase mb-1">YOU</p>
-                            <p class="font-black text-slate-200 text-lg truncate">${myWord}</p>
-                        </div>
+                    <div class="flex-1 bg-white/5 p-4 rounded-2xl border border-white/5 italic text-slate-500 text-sm font-medium truncate">
+                        Waiting for ${p.name}...
                     </div>
                 </div>`;
             }
         });
         
+        html += `
+        <div class="space-y-4 lg:mt-6 mt-4 pb-4">
+            <div class="flex items-center justify-between">
+                <span class="text-[10px] font-black text-primary uppercase tracking-widest">Round ${String(STATE.currentRound || 1).padStart(2,'0')} (Current)</span>
+                <div class="h-px bg-primary/20 flex-1 ml-4"></div>
+            </div>
+            <div class="flex flex-col gap-3">
+                ${currentPlayersHtml}
+            </div>
+        </div>`;
+        
         historyContainer.innerHTML = html;
+        
+        setTimeout(() => {
+            historyContainer.scrollTop = historyContainer.scrollHeight;
+        }, 50);
     },
 
     renderResults: (data) => {
@@ -706,14 +701,11 @@ socket.on('round-start', (data) => {
         setTimeout(() => { circle.style.transition = 'all 1s linear'; }, 50);
     }
     
-    // Update my profile sidebar
-    const me = STATE.players.find(p => p.id === socket.id);
-    if(me) {
-        const myScore = me.score || 0;
-        document.getElementById('sidebar-my-score').textContent = myScore;
-        const myAvatar = AVATARS[me.avatar % AVATARS.length];
-        const seed = encodeURIComponent(me.name + myAvatar.seedSuffix);
-        document.getElementById('sidebar-my-avatar').innerHTML = `<img class="w-full h-full rounded-full object-cover" src="https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent" />`;
+    if (circle) {
+        circle.style.transition = 'none';
+        circle.style.strokeDashoffset = '0';
+        circle.style.stroke = '#22c55e'; // Green start
+        setTimeout(() => { circle.style.transition = 'all 1s linear'; }, 50);
     }
     
     app.renderRoundHistory();
