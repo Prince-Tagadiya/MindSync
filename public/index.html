@@ -32,6 +32,12 @@
                         'fade-in-up': 'fadeInUp 0.8s ease-out forwards',
                         'slide-in-right': 'slideInRight 0.5s ease-out forwards',
                         'bounce-subtle': 'bounceSubtle 2s ease-in-out infinite',
+                        'drifting': 'drifting 25s ease-in-out infinite',
+                        'pulseSlow': 'pulseSlow 4s ease-in-out infinite',
+                        'entrance': 'entrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'scaleIn': 'scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+                        'glow': 'glow 2.5s infinite',
+                        'avatarIdle': 'avatarIdle 3s ease-in-out infinite',
                     },
                     keyframes: {
                         float: {
@@ -49,6 +55,30 @@
                         bounceSubtle: {
                             '0%, 100%': { transform: 'translateY(0)' },
                             '50%': { transform: 'translateY(-5px)' },
+                        },
+                        drifting: {
+                            '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+                            '50%': { transform: 'translate(-40px, 40px) scale(1.1)' },
+                        },
+                        pulseSlow: {
+                            '0%, 100%': { transform: 'scale(1)', opacity: '0.8' },
+                            '50%': { transform: 'scale(1.05)', opacity: '1' },
+                        },
+                        entrance: {
+                            '0%': { opacity: '0', transform: 'translateY(20px) scale(0.95)' },
+                            '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+                        },
+                        scaleIn: {
+                            '0%': { transform: 'scale(0.8)', opacity: '0' },
+                            '100%': { transform: 'scale(1)', opacity: '1' },
+                        },
+                        glow: {
+                            '0%, 100%': { boxShadow: '0 0 5px rgba(16, 185, 129, 0.2), 0 0 20px rgba(16, 185, 129, 0.1)' },
+                            '50%': { boxShadow: '0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(16, 185, 129, 0.3)' },
+                        },
+                        avatarIdle: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-4px)' },
                         }
                     }
                 },
@@ -64,6 +94,11 @@
         .glow-text {
             text-shadow: 0 0 20px rgba(236, 91, 19, 0.5);
         }
+        .stagger-1 { animation-delay: 0.1s; opacity: 0; }
+        .stagger-2 { animation-delay: 0.2s; opacity: 0; }
+        .stagger-3 { animation-delay: 0.3s; opacity: 0; }
+        .stagger-4 { animation-delay: 0.4s; opacity: 0; }
+        .stagger-5 { animation-delay: 0.5s; opacity: 0; }
         .animate-delay-100 { animation-delay: 100ms; }
         .animate-delay-200 { animation-delay: 200ms; }
         .animate-delay-300 { animation-delay: 300ms; }
@@ -197,72 +232,79 @@
         </main>
 
         <!-- ====== LOBBY SCREEN ====== -->
-        <main id="lobby-screen" class="screen flex-1 flex-col items-center py-10 px-4 w-full max-w-5xl mx-auto">
-            <div class="w-full flex flex-col md:flex-row gap-8">
-                <!-- Players Area -->
-                <div class="flex-1 flex flex-col gap-6 animate-slide-in-right">
-                    <div class="flex items-center justify-between">
-                        <h2 class="text-3xl font-black text-white flex items-center gap-3">
-                            <span class="material-symbols-outlined text-primary text-4xl">groups</span>
-                            Players <span id="lobby-player-count" class="text-slate-400 text-xl font-bold">(1/8)</span>
-                        </h2>
-                        
-                        <button onclick="app.leaveRoom()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 font-bold transition-colors">
-                            <span class="material-symbols-outlined text-sm">logout</span> Leave
+        <main id="lobby-screen" class="screen flex-1 flex-col items-center w-full max-w-4xl mx-auto z-10 px-4 py-8">
+            <!-- Room Code Badge -->
+            <div class="mb-10 text-center animate-scaleIn flex-shrink-0 stagger-1">
+                <div class="inline-flex flex-col items-center">
+                    <span class="text-slate-300 text-xs font-bold uppercase tracking-widest mb-2">Room Code</span>
+                    <div class="bg-white/10 border border-white/20 backdrop-blur-xl px-8 py-3 rounded-full shadow-2xl flex items-center gap-4 hover:scale-105 transition-transform duration-300 cursor-pointer" onclick="app.copyRoomCode()">
+                        <h1 class="text-white text-4xl font-black tracking-widest" id="lobby-code-display">SYNC42</h1>
+                        <button class="text-primary hover:text-primary/80 transition-colors">
+                            <span class="material-symbols-outlined" id="copy-icon">content_copy</span>
                         </button>
                     </div>
-                    
-                    <div id="lobby-players" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                        <!-- Player cards injected here -->
-                    </div>
+                </div>
+            </div>
+
+            <!-- Player List Card -->
+            <div class="w-full bg-white/5 border border-white/10 flex-shrink-0 backdrop-blur-2xl rounded-[2.5rem] p-8 shadow-2xl mb-8 animate-entrance stagger-2">
+                <div class="flex items-center justify-between mb-8 px-2">
+                    <h3 class="text-white text-xl font-bold flex items-center gap-2">
+                        <span class="material-symbols-outlined text-yellow-400">group</span>
+                        Players in Lobby
+                    </h3>
+                    <span class="bg-primary/20 text-primary px-4 py-1 rounded-full text-sm font-bold" id="lobby-player-count">1 / 8</span>
                 </div>
                 
-                <!-- Settings Area -->
-                <div class="w-full md:w-[320px] shrink-0 flex flex-col gap-6 animate-fade-in-up animate-delay-200">
-                    <div class="bg-white/10 border border-white/20 backdrop-blur-xl rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                        <div class="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full blur-2xl -mr-10 -mt-10"></div>
-                        
-                        <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-2 relative z-10">
-                            <span class="material-symbols-outlined">settings</span> Game Settings
-                        </h3>
-                        
-                        <div class="flex flex-col gap-5 relative z-10 host-only-settings opacity-50 pointer-events-none transition-all duration-300">
-                            <!-- Rounds -->
-                            <div class="flex flex-col gap-2">
-                                <div class="flex justify-between items-center">
-                                    <label class="text-slate-300 font-semibold text-sm">Number of Rounds</label>
-                                    <span id="setting-rounds-val" class="text-white font-bold bg-white/10 px-2 rounded-md">5</span>
-                                </div>
-                                <input id="setting-rounds" oninput="app.updateSettings()" type="range" min="1" max="10" value="5" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary">
+                <div id="lobby-players" class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                    <!-- Players injected here by JS -->
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col w-full max-w-md gap-4 px-4 animate-entrance flex-shrink-0 stagger-5 mx-auto">
+                <button id="btn-start-game" onclick="app.startGame()" class="w-full relative overflow-hidden bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xl py-5 rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:bg-slate-700 disabled:text-slate-400 group">
+                    <div class="absolute inset-0 bg-primary translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0 btn-start-bg hidden"></div>
+                    <span class="relative z-10 flex items-center justify-center gap-2 w-full">
+                        <span class="material-symbols-outlined font-bold btn-icon">play_arrow</span>
+                        <span class="btn-text">START GAME</span>
+                    </span>
+                </button>
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="app.copyRoomCode()" class="bg-white/10 hover:bg-white/20 text-white font-bold py-4 rounded-2xl border border-white/10 backdrop-blur-md flex items-center justify-center gap-2 transition-all">
+                        <span class="material-symbols-outlined text-lg">link</span>
+                        Invite
+                    </button>
+                    <button onclick="app.leaveRoom()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold py-4 rounded-2xl border border-red-500/20 backdrop-blur-md flex items-center justify-center gap-2 transition-all">
+                        <span class="material-symbols-outlined text-lg">logout</span>
+                        Leave
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Footer Tips / Settings -->
+            <div class="mt-8 mb-8 text-center text-white/40 justify-center w-full max-w-md mx-auto animate-entrance flex-shrink-0 stagger-5">
+                <p class="animate-pulse text-sm mb-4" id="host-warning">Waiting for the host to start the sync session...</p>
+                
+                <!-- Compact Host Settings -->
+                <div class="host-only-settings hidden bg-black/40 border border-white/10 rounded-2xl p-4 text-left transition-all duration-300">
+                    <h4 class="text-white text-sm font-bold mb-3 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[16px]">settings</span> Host Settings
+                    </h4>
+                    <div class="flex flex-col gap-3">
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between items-center">
+                                <label class="text-slate-300 text-xs text-left">Number of Rounds</label>
+                                <span id="setting-rounds-val" class="text-white text-xs font-bold bg-white/10 px-2 py-0.5 rounded">5</span>
                             </div>
-                            
-                            <!-- Timer -->
-                            <div class="flex flex-col gap-2">
-                                <div class="flex justify-between items-center">
-                                    <label class="text-slate-300 font-semibold text-sm">Time per Round (sec)</label>
-                                    <span id="setting-time-val" class="text-white font-bold bg-white/10 px-2 rounded-md">30</span>
-                                </div>
-                                <input id="setting-time" oninput="app.updateSettings()" type="range" min="10" max="60" step="5" value="30" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary">
-                            </div>
-                            
-                            <p id="host-warning" class="text-yellow-400 text-xs mt-2 hidden text-center italic font-medium">Only the host can change settings.</p>
+                            <input id="setting-rounds" oninput="app.updateSettings()" type="range" min="1" max="10" value="5" class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary">
                         </div>
-                        
-                        <div class="mt-8 pt-6 border-t border-white/10 relative z-10 text-center">
-                            <p class="text-slate-400 text-sm mb-4">Invite friends with code</p>
-                            <div class="flex items-center justify-between bg-black/40 rounded-xl p-3 border border-white/10 mb-6 cursor-pointer hover:bg-black/60 transition-colors group" onclick="app.copyRoomCode()">
-                                <div class="text-3xl font-black text-white tracking-[0.2em] font-mono" id="lobby-code-display">ABCDEF</div>
-                                <div class="p-2 bg-white/10 rounded-lg text-slate-300 group-hover:text-white transition-colors">
-                                    <span class="material-symbols-outlined" id="copy-icon">content_copy</span>
-                                </div>
+                        <div class="flex flex-col gap-1">
+                            <div class="flex justify-between items-center">
+                                <label class="text-slate-300 text-xs text-left">Time per Round (sec)</label>
+                                <span id="setting-time-val" class="text-white text-xs font-bold bg-white/10 px-2 py-0.5 rounded">30</span>
                             </div>
-                            
-                            <button id="btn-start-game" onclick="app.startGame()" class="w-full py-4 rounded-xl font-black text-lg text-white bg-slate-700 cursor-not-allowed transition-all duration-300 uppercase tracking-wider relative overflow-hidden group">
-                                <div class="absolute inset-0 bg-primary translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-0 btn-start-bg"></div>
-                                <span class="relative z-10 flex items-center justify-center gap-2">
-                                    Wait for players
-                                </span>
-                            </button>
+                            <input id="setting-time" oninput="app.updateSettings()" type="range" min="10" max="60" step="5" value="30" class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary">
                         </div>
                     </div>
                 </div>

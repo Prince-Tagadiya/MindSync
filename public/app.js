@@ -21,14 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ===== AVATARS =====
 const AVATARS = [
-    { icon: 'cruelty_free', color: 'bg-pink-500' },
-    { icon: 'smart_toy', color: 'bg-blue-500' },
-    { icon: 'pets', color: 'bg-orange-500' },
-    { icon: 'rocket_launch', color: 'bg-purple-500' },
-    { icon: 'sports_esports', color: 'bg-green-500' },
-    { icon: 'skateboarding', color: 'bg-teal-500' },
-    { icon: 'cookie', color: 'bg-yellow-500' },
-    { icon: 'local_pizza', color: 'bg-red-500' },
+    { seedSuffix: "a", color: 'from-orange-400 to-primary' },
+    { seedSuffix: "b", color: 'from-purple-400 to-indigo-500' },
+    { seedSuffix: "c", color: 'from-yellow-300 to-orange-500' },
+    { seedSuffix: "d", color: 'from-teal-300 to-emerald-500' },
+    { seedSuffix: "e", color: 'from-pink-400 to-rose-500' },
+    { seedSuffix: "f", color: 'from-blue-400 to-cyan-500' },
+    { seedSuffix: "g", color: 'from-green-400 to-emerald-500' },
+    { seedSuffix: "h", color: 'from-red-400 to-rose-600' },
 ];
 
 // ===== UTILS =====
@@ -175,52 +175,78 @@ const app = {
         const container = document.getElementById('lobby-players');
         container.innerHTML = '';
         
-        STATE.players.forEach(p => {
+        STATE.players.forEach((p, index) => {
             const avatar = AVATARS[p.avatar % AVATARS.length];
             const isMe = p.id === socket.id;
-            const isHostStr = p.id === STATE.host ? '<span class="material-symbols-outlined text-yellow-400 absolute -top-2 -right-2 bg-slate-900 rounded-full text-lg shadow-lg border border-slate-700 p-0.5">crown</span>' : '';
+            const isHost = p.id === STATE.host;
+            const staggerDelay = (index % 4) * 0.1;
+            const seed = encodeURIComponent(p.name + avatar.seedSuffix);
+            const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
+            
+            const hostIcon = isHost ? '<span class="material-symbols-outlined text-yellow-400 absolute -top-4 -right-4 bg-slate-900 rounded-full text-lg shadow-lg border border-slate-700 p-1 z-10">crown</span>' : '';
+            const statusIcon = p.id ? 'check' : 'more_horiz';
+            const statusColor = p.id ? 'bg-green-500' : 'bg-slate-500';
+            const statusText = p.id ? 'Ready' : 'Waiting';
+            const statusTextColor = p.id ? 'text-green-400' : 'text-slate-400';
             
             container.innerHTML += `
-                <div class="bg-black/40 border ${isMe ? 'border-primary shadow-[0_0_15px_-3px_rgba(236,91,19,0.3)]' : 'border-white/10'} rounded-2xl p-4 flex flex-col items-center gap-3 relative animate-fade-in-up">
-                    ${isHostStr}
-                    <div class="size-16 rounded-full ${avatar.color} flex items-center justify-center shadow-lg transform transition-transform hover:scale-110">
-                        <span class="material-symbols-outlined text-white text-3xl">${avatar.icon}</span>
+                <div class="flex flex-col items-center gap-4 group animate-entrance" style="animation-delay: ${staggerDelay}s">
+                    <div class="relative w-24 h-24">
+                        ${hostIcon}
+                        <div class="w-full h-full rounded-full bg-gradient-to-tr ${avatar.color} p-1 shadow-lg group-hover:scale-110 group-hover:-rotate-3 transition-all duration-300 animate-avatarIdle" style="animation-delay: ${staggerDelay}s">
+                            <img class="w-full h-full rounded-full bg-slate-800 object-cover" src="${avatarUrl}" alt="Avatar">
+                        </div>
+                        <div class="absolute bottom-1 right-1 ${statusColor} w-6 h-6 rounded-full border-4 border-slate-900 flex items-center justify-center">
+                            <span class="material-symbols-outlined text-[12px] text-white font-bold">${statusIcon}</span>
+                        </div>
                     </div>
-                    <span class="text-white font-bold text-lg truncate w-full text-center ${isMe ? 'text-primary' : ''}">${p.name}</span>
+                    <div class="text-center w-full overflow-hidden">
+                        <p class="text-white font-bold text-lg truncate w-full ${isMe ? 'text-primary' : ''}">${p.name}</p>
+                        <p class="${statusTextColor} text-xs font-bold uppercase tracking-tighter">${statusText}</p>
+                    </div>
                 </div>
             `;
         });
+
+        // Fill remaining slots
+        for(let i = STATE.players.length; i < 8; i++) {
+            const isMobileHidden = i >= 4 ? 'hidden md:flex' : 'flex';
+            container.innerHTML += `
+                <div class="${isMobileHidden} border-2 border-dashed border-white/10 rounded-full w-24 h-24 mx-auto items-center justify-center group cursor-pointer hover:border-primary/50 transition-colors animate-pulseSlow mt-0">
+                    <span class="material-symbols-outlined text-white/20 group-hover:text-primary transition-colors">person_add</span>
+                </div>
+            `;
+        }
         
-        document.getElementById('lobby-player-count').textContent = `(${STATE.players.length}/8)`;
+        document.getElementById('lobby-player-count').textContent = `${STATE.players.length} / 8`;
         
         // Host controls
         const btnStart = document.getElementById('btn-start-game');
-        const btnBg = btnStart.querySelector('.btn-start-bg');
-        const btnSpan = btnStart.querySelector('span');
+        const btnIcon = btnStart.querySelector('.btn-icon');
+        const btnText = btnStart.querySelector('.btn-text');
         const hostWarning = document.getElementById('host-warning');
         
         const settingsEls = document.querySelectorAll('.host-only-settings');
         
         if (STATE.isHost) {
             settingsEls.forEach(el => {
-                el.classList.remove('opacity-50', 'pointer-events-none');
+                el.classList.remove('hidden');
             });
             hostWarning.classList.add('hidden');
             
+            btnStart.classList.remove('hidden');
             if (STATE.players.length >= 2) {
-                btnStart.classList.remove('cursor-not-allowed', 'opacity-50');
-                btnStart.classList.add('hover:shadow-[0_0_30px_-5px_rgba(236,91,19,0.6)]');
-                btnBg.classList.replace('bg-slate-600', 'bg-primary');
-                btnSpan.innerHTML = 'Start Game <span class="material-symbols-outlined">play_circle</span>';
+                btnStart.disabled = false;
+                btnIcon.textContent = 'play_arrow';
+                btnText.textContent = 'START GAME';
             } else {
-                btnStart.classList.add('cursor-not-allowed', 'opacity-50');
-                btnStart.classList.remove('hover:shadow-[0_0_30px_-5px_rgba(236,91,19,0.6)]');
-                btnBg.classList.replace('bg-primary', 'bg-slate-600');
-                btnSpan.innerHTML = 'Waiting for players...';
+                btnStart.disabled = true;
+                btnIcon.textContent = 'hourglass_empty';
+                btnText.textContent = 'WAITING FOR PLAYERS';
             }
         } else {
             settingsEls.forEach(el => {
-                el.classList.add('opacity-50', 'pointer-events-none');
+                el.classList.add('hidden');
             });
             hostWarning.classList.remove('hidden');
             btnStart.classList.add('hidden');
