@@ -18,7 +18,12 @@
                         "primary": "#ec5b13",
                         "secondary-green": "#22c55e",
                         "background-light": "#f8f6f6",
-                        "background-dark": "#221610",
+                        "background-dark": "#0a0f1e",
+                        "mindsync-deep": "#0f172a",
+                        "mindsync-dark": "#1e293b",
+                        "accent-purple": "#8b5cf6",
+                        "accent-green": "#10b981",
+                        "card-bg": "rgba(30, 41, 59, 0.7)",
                     },
                     fontFamily: {
                         "display": ["Lexend", "Public Sans", "sans-serif"]
@@ -43,11 +48,26 @@
                         'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both',
                         'fade-in-slide-up': 'fade-in-slide-up 0.4s ease-out forwards',
                         'pulse-soft': 'pulse-soft 2s ease-in-out infinite',
+                        'slide-in': 'slide-in 0.5s ease-out forwards',
+                        'float-shape': 'float-shape 6s ease-in-out infinite',
+                        'pulse-glow-word': 'pulse-glow-word 2s infinite',
                     },
                     keyframes: {
                         float: {
                             '0%, 100%': { transform: 'translateY(0) scale(1)' },
                             '50%': { transform: 'translateY(-20px) scale(1.05)' },
+                        },
+                        'pulse-glow-word': {
+                            '0%, 100%': { transform: 'scale(1)', filter: 'drop-shadow(0 0 5px rgba(255, 215, 0, 0.7))' },
+                            '50%': { transform: 'scale(1.05)', filter: 'drop-shadow(0 0 20px rgba(255, 215, 0, 1))' },
+                        },
+                        'float-shape': {
+                            '0%, 100%': { transform: 'translateY(0px) rotate(0deg)' },
+                            '50%': { transform: 'translateY(-20px) rotate(5deg)' },
+                        },
+                        'slide-in': {
+                            '0%': { transform: 'translateX(-50px)', opacity: '0' },
+                            '100%': { transform: 'translateX(0)', opacity: '1' },
                         },
                         shake: {
                             '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
@@ -117,6 +137,22 @@
         .glow-text {
             text-shadow: 0 0 20px rgba(236, 91, 19, 0.5);
         }
+        .victory-glow {
+            text-shadow: 0 0 20px rgba(236, 91, 19, 0.5), 0 0 40px rgba(236, 91, 19, 0.3);
+        }
+        .bg-gradient-victory {
+            background: radial-gradient(circle at center, #1e293b 0%, #0a0f1e 100%);
+        }
+        #confetti-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            display: none;
+        }
         .stagger-1 { animation-delay: 0.1s; opacity: 0; }
         .stagger-2 { animation-delay: 0.2s; opacity: 0; }
         .stagger-3 { animation-delay: 0.3s; opacity: 0; }
@@ -139,6 +175,21 @@
         /* Modal Background */
         .modal-bg { display: none; }
         .modal-bg.active { display: flex; }
+        
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Results Shapes */
+        .shape { position: absolute; filter: blur(40px); opacity: 0.4; z-index: 0; }
+        .shape-1 { top: 10%; left: 10%; width: 200px; height: 200px; background: #ec4899; border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+        .shape-2 { top: 60%; right: 5%; width: 250px; height: 250px; background: #3b82f6; border-radius: 50%; }
+        .shape-3 { bottom: 10%; left: 20%; width: 150px; height: 150px; background: #fbbf24; border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; }
+        .matching-word { animation: pulse-glow-word 2s infinite ease-in-out; color: #fbbf24; }
+        .player-card { transition: transform 0.2s ease; opacity: 0; animation: slide-in 0.6s ease-out forwards; }
+        .player-card:hover { transform: translateY(-5px); }
     </style>
 </head>
 <body class="font-display bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen overflow-x-hidden">
@@ -209,7 +260,7 @@
 
                 <!-- Action Buttons -->
                 <div class="flex flex-col sm:flex-row gap-4 w-full max-w-md justify-center animate-fade-in-up animate-delay-300">
-                    <button onclick="app.createRoom()" class="group flex-1 flex min-w-[180px] cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-2xl h-16 px-8 bg-primary hover:scale-105 hover:shadow-[0_0_30px_-5px_rgba(236,91,19,0.6)] text-white text-lg font-extrabold transition-all duration-300">
+                    <button onclick="app.showCreateRoomModal()" class="group flex-1 flex min-w-[180px] cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-2xl h-16 px-8 bg-primary hover:scale-105 hover:shadow-[0_0_30px_-5px_rgba(236,91,19,0.6)] text-white text-lg font-extrabold transition-all duration-300">
                         <span class="material-symbols-outlined group-hover:rotate-12 transition-transform">add_circle</span>
                         <span>Create Room</span>
                     </button>
@@ -501,48 +552,53 @@
         </main>
 
         <!-- ====== RESULTS SCREEN ====== -->
-        <main id="results-screen" class="screen flex-1 flex-col items-center py-10 px-4 w-full">
-            <div class="w-full max-w-4xl mx-auto flex flex-col gap-8">
-                
-                <div class="text-center animate-fade-in-up">
-                    <h2 id="result-title" class="text-4xl md:text-6xl font-black text-white mb-2 glow-text">Mind Sync!</h2>
-                    <p id="result-subtitle" class="text-xl text-slate-300 font-medium">Everyone guessed the same word. Perfect harmony.</p>
-                </div>
-                
-                <div class="bg-white/10 border border-white/20 backdrop-blur-xl rounded-3xl p-6 md:p-10 shadow-2xl w-full animate-fade-in-up animate-delay-100">
-                    <div class="text-center mb-8">
-                        <span class="uppercase tracking-widest text-primary font-bold text-sm bg-primary/10 px-3 py-1 rounded-full">Prompt</span>
-                        <h3 id="result-prompt" class="text-2xl font-bold text-white mt-3">What did everyone say?</h3>
+        <main id="results-screen" class="screen flex-1 flex-col items-center justify-center container mx-auto px-4 py-8 relative z-10 w-full min-h-screen">
+            <!-- Background Elements -->
+            <div class="fixed inset-0 pointer-events-none overflow-hidden hidden" id="results-bg-shapes">
+                <div class="absolute inset-0 bg-gradient-to-b from-mindsync-deep to-mindsync-dark z-[-1]"></div>
+                <div class="shape shape-1 animate-float-shape"></div>
+                <div class="shape shape-2 animate-float-shape" style="animation-delay: -2s;"></div>
+                <div class="shape shape-3 animate-float-shape" style="animation-delay: -4s;"></div>
+            </div>
+
+            <!-- Header -->
+            <header class="text-center mb-12">
+                <h1 id="result-title" class="text-5xl md:text-6xl font-black tracking-tight mb-2 drop-shadow-lg italic">
+                    Mind<span class="text-blue-400">Sync</span>
+                </h1>
+                <p id="result-subtitle" class="text-lg text-blue-200 font-medium uppercase tracking-widest">Results Revealed!</p>
+            </header>
+
+            <!-- Player Results Grid -->
+            <section id="result-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-6xl mb-12">
+                <!-- Cards injected here by app.js -->
+            </section>
+
+            <!-- Action Controls -->
+            <footer id="result-footer-controls" class="w-full max-w-md flex flex-col items-center gap-4 hidden host-only-controls">
+                <div class="text-blue-200 text-center mb-4 w-full">
+                    <p id="result-sync-text" class="text-sm font-semibold opacity-80 uppercase tracking-widest">0 players synced!</p>
+                    <div class="h-1 w-full bg-white/10 rounded-full mt-2 overflow-hidden">
+                        <div id="result-sync-bar" class="h-full bg-yellow-400 w-0 transition-all duration-1000"></div>
                     </div>
-                    
-                    <div id="result-cards" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                        <!-- Result cards injected here -->
-                    </div>
                 </div>
-                
-                <!-- Leaderboard (Compact) -->
-                <div class="bg-black/30 border border-white/10 rounded-3xl p-6 w-full animate-fade-in-up animate-delay-200">
-                    <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                        <span class="material-symbols-outlined text-yellow-400">emoji_events</span> Leaderboard
-                    </h3>
-                    <div id="results-leaderboard" class="flex flex-col gap-2">
-                        <!-- Rows injected here -->
-                    </div>
-                </div>
-                
-                <div class="flex justify-center mt-4 host-only-controls hidden animate-fade-in-up animate-delay-300">
-                    <button onclick="app.nextRound()" id="btn-next-round" class="px-8 h-16 rounded-xl bg-primary hover:bg-primary/90 text-white font-black text-xl transition-all shadow-[0_4px_20px_-5px_rgba(236,91,19,0.5)] flex items-center gap-2 group/next">
-                        Next Round <span class="material-symbols-outlined group-hover/next:translate-x-1 transition-transform">arrow_forward</span>
-                    </button>
-                    <button onclick="app.playAgain()" id="btn-play-again" class="hidden px-8 h-16 rounded-xl bg-secondary-green hover:bg-secondary-green/90 text-white font-black text-xl transition-all shadow-[0_4px_20px_-5px_rgba(34,197,94,0.5)] flex items-center gap-2 group/play">
-                        Play Again <span class="material-symbols-outlined group-hover/play:-rotate-180 transition-transform duration-500">replay</span>
-                    </button>
-                </div>
-                <div class="text-center text-slate-400 mt-4 non-host-message italic font-medium">
-                    Waiting for host to continue...
-                </div>
+
+                <button onclick="app.nextRound()" id="btn-next-round" class="w-full py-5 px-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xl rounded-2xl shadow-[0_10px_0_0_#1e3a8a] active:shadow-none active:translate-y-1 transition-all duration-75 uppercase tracking-tighter">
+                    Next Round
+                </button>
+                <button onclick="app.playAgain()" id="btn-play-again" class="hidden w-full py-5 px-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xl rounded-2xl shadow-[0_10px_0_0_#1e3a8a] active:shadow-none active:translate-y-1 transition-all duration-75 uppercase tracking-tighter">
+                    Play Again
+                </button>
+                <button onclick="app.leaveRoom()" class="mt-4 text-white/50 hover:text-white text-sm font-medium transition-colors uppercase tracking-widest">
+                    Quit Game
+                </button>
+            </footer>
+            
+            <div class="text-center text-slate-400 mt-4 non-host-message italic font-medium">
+                Waiting for host to continue...
             </div>
         </main>
+
 
         <!-- Footer -->
         <footer id="global-footer" class="border-t border-white/10 bg-slate-900/80 backdrop-blur-2xl px-6 md:px-20 py-8 mt-auto flex-shrink-0 animate-fade-in-up">
@@ -568,6 +624,217 @@
             <div class="flex justify-end gap-3">
                 <button onclick="document.getElementById('modal-name').classList.remove('active')" class="px-5 py-2 rounded-lg text-slate-300 hover:bg-white/5 transition-colors font-medium">Cancel</button>
                 <button id="btn-save-name" onclick="app.saveName()" class="px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white font-bold transition-colors">Save Name</button>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Create Room Modal -->
+    <div id="modal-create-room" class="modal-bg fixed inset-0 z-50 bg-black/60 backdrop-blur-sm items-center justify-center p-4">
+        <!-- Modal Container -->
+        <div class="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto glass-panel rounded-3xl shadow-2xl flex flex-col border border-white/10">
+            <!-- Header Component -->
+            <div class="sticky top-0 z-20 bg-[#1e293b]/90 backdrop-blur-md px-8 py-6 border-b border-white/10">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-3xl font-black text-white tracking-tight">Create Room</h2>
+                        <p class="text-primary font-bold flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">stars</span>
+                            MindSync Party Mode
+                        </p>
+                    </div>
+                    <button onclick="document.getElementById('modal-create-room').classList.remove('active')" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-white/70 hover:text-white">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-8 space-y-8">
+                
+                <!-- Player Settings Section -->
+                <section>
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="material-symbols-outlined text-primary font-bold">groups</span>
+                        <h3 class="text-lg font-bold text-white">Player Settings</h3>
+                    </div>
+                    <div class="grid grid-cols-5 gap-3">
+                        <label class="cursor-pointer group">
+                            <input type="radio" name="create-setting-players" value="2" class="peer sr-only" checked>
+                            <div class="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-white/10 bg-white/5 hover:border-white/30 text-white/50 hover:text-white font-bold transition-all hover:scale-105 peer-checked:border-primary peer-checked:bg-primary/20 peer-checked:text-white peer-checked:shadow-[0_0_15px_rgba(236,91,19,0.3)]">
+                                <span class="text-xl">2</span>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer group">
+                            <input type="radio" name="create-setting-players" value="3" class="peer sr-only">
+                            <div class="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-white/10 bg-white/5 hover:border-white/30 text-white/50 hover:text-white font-bold transition-all hover:scale-105 peer-checked:border-primary peer-checked:bg-primary/20 peer-checked:text-white peer-checked:shadow-[0_0_15px_rgba(236,91,19,0.3)]">
+                                <span class="text-xl">3</span>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer group">
+                            <input type="radio" name="create-setting-players" value="4" class="peer sr-only">
+                            <div class="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-white/10 bg-white/5 hover:border-white/30 text-white/50 hover:text-white font-bold transition-all hover:scale-105 peer-checked:border-primary peer-checked:bg-primary/20 peer-checked:text-white peer-checked:shadow-[0_0_15px_rgba(236,91,19,0.3)]">
+                                <span class="text-xl">4</span>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer group">
+                            <input type="radio" name="create-setting-players" value="5" class="peer sr-only">
+                            <div class="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-white/10 bg-white/5 hover:border-white/30 text-white/50 hover:text-white font-bold transition-all hover:scale-105 peer-checked:border-primary peer-checked:bg-primary/20 peer-checked:text-white peer-checked:shadow-[0_0_15px_rgba(236,91,19,0.3)]">
+                                <span class="text-xl">5</span>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer group">
+                            <input type="radio" name="create-setting-players" value="6" class="peer sr-only">
+                            <div class="flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-white/10 bg-white/5 hover:border-white/30 text-white/50 hover:text-white font-bold transition-all hover:scale-105 peer-checked:border-primary peer-checked:bg-primary/20 peer-checked:text-white peer-checked:shadow-[0_0_15px_rgba(236,91,19,0.3)]">
+                                <span class="text-xl">6</span>
+                            </div>
+                        </label>
+                    </div>
+                </section>
+                
+                <!-- Game Mode Selection -->
+                <section>
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="material-symbols-outlined text-primary font-bold">sports_esports</span>
+                        <h3 class="text-lg font-bold text-white">Game Mode</h3>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <label class="relative cursor-pointer group">
+                            <input checked="" class="peer sr-only" name="create-mode" value="normal" type="radio"/>
+                            <div class="p-4 rounded-2xl border-2 border-white/10 bg-white/5 peer-checked:border-green-400 peer-checked:bg-green-400/10 flex flex-col items-center text-center gap-1 transition-all">
+                                <span class="material-symbols-outlined text-green-400">mood</span>
+                                <span class="font-bold text-white">Normal</span>
+                                <span class="text-xs text-white/40">Relaxed play</span>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer group">
+                            <input class="peer sr-only" name="create-mode" value="hard" type="radio"/>
+                            <div class="p-4 rounded-2xl border-2 border-white/10 bg-white/5 peer-checked:border-orange-400 peer-checked:bg-orange-400/10 flex flex-col items-center text-center gap-1 transition-all">
+                                <span class="material-symbols-outlined text-orange-400">bolt</span>
+                                <span class="font-bold text-white">Hard</span>
+                                <span class="text-xs text-white/40">Limited clues</span>
+                            </div>
+                        </label>
+                        <label class="relative cursor-pointer group">
+                            <input class="peer sr-only" name="create-mode" value="chaos" type="radio"/>
+                            <div class="p-4 rounded-2xl border-2 border-white/10 bg-white/5 peer-checked:border-purple-400 peer-checked:bg-purple-400/10 flex flex-col items-center text-center gap-1 transition-all">
+                                <span class="material-symbols-outlined text-purple-400">cyclone</span>
+                                <span class="font-bold text-white">Chaos</span>
+                                <span class="text-xs text-white/40">Random rules</span>
+                            </div>
+                        </label>
+                    </div>
+                </section>
+                
+                <!-- Word & Reveal Rules -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <section>
+                        <div class="flex items-center gap-2 mb-4">
+                            <span class="material-symbols-outlined text-primary font-bold">rule</span>
+                            <h3 class="text-lg font-bold text-white">Word Rules</h3>
+                        </div>
+                        <div class="space-y-4">
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-white/80 font-medium">Prevent repeated words</span>
+                                <div class="relative inline-flex items-center">
+                                    <input checked id="create-setting-prevent-repeat" class="sr-only peer" type="checkbox"/>
+                                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                                </div>
+                            </label>
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-white/80 font-medium">Hide guesses until reveal</span>
+                                <div class="relative inline-flex items-center">
+                                    <input checked id="create-setting-hide-guesses" class="sr-only peer" type="checkbox"/>
+                                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                                </div>
+                            </label>
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-white/80 font-medium">Show guess history</span>
+                                <div class="relative inline-flex items-center">
+                                    <input id="create-setting-show-history" class="sr-only peer" type="checkbox"/>
+                                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                                </div>
+                            </label>
+                        </div>
+                    </section>
+                    
+                    <section>
+                        <div class="flex items-center gap-2 mb-4">
+                            <span class="material-symbols-outlined text-primary font-bold">timer</span>
+                            <h3 class="text-lg font-bold text-white">Time &amp; Reveal</h3>
+                        </div>
+                        <div class="space-y-4">
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-white/80 font-medium">Countdown Reveal</span>
+                                <div class="relative inline-flex items-center">
+                                    <input checked id="create-setting-countdown" class="sr-only peer" type="checkbox"/>
+                                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                                </div>
+                            </label>
+                            <div class="flex flex-col gap-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-white/80 font-medium">Guess Timer</span>
+                                    <span id="setting-guess-timer-val" class="text-primary font-bold text-sm">30s</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs font-bold text-primary">0s</span>
+                                    <input id="create-setting-time" class="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary" max="60" min="0" step="5" type="range" value="30" oninput="document.getElementById('setting-guess-timer-val').textContent = this.value + 's'"/>
+                                    <span class="text-xs font-bold text-primary">60s</span>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                
+                <!-- Accessibility & Effects -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-white/10">
+                    <section>
+                        <div class="flex items-center gap-2 mb-4">
+                            <span class="material-symbols-outlined text-primary font-bold">record_voice_over</span>
+                            <h3 class="text-lg font-bold text-white">Voice Settings</h3>
+                        </div>
+                        <label class="flex items-center justify-between cursor-pointer group">
+                            <span class="text-white/80 font-medium">Text-to-speech reveal</span>
+                            <div class="relative inline-flex items-center">
+                                <input id="create-setting-tts" class="sr-only peer" type="checkbox"/>
+                                <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                            </div>
+                        </label>
+                    </section>
+                    <section>
+                        <div class="flex items-center gap-2 mb-4">
+                            <span class="material-symbols-outlined text-primary font-bold">auto_fix_high</span>
+                            <h3 class="text-lg font-bold text-white">Animation Settings</h3>
+                        </div>
+                        <div class="space-y-4">
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-white/80 font-medium">Confetti animation</span>
+                                <div class="relative inline-flex items-center">
+                                    <input checked id="create-setting-confetti" class="sr-only peer" type="checkbox"/>
+                                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                                </div>
+                            </label>
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-white/80 font-medium">Card reveal effects</span>
+                                <div class="relative inline-flex items-center">
+                                    <input checked id="create-setting-effects" class="sr-only peer" type="checkbox"/>
+                                    <div class="w-11 h-6 bg-white/10 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-inner"></div>
+                                </div>
+                            </label>
+                        </div>
+                    </section>
+                </div>
+            </div>
+            
+            <!-- Footer / Action Buttons -->
+            <div class="sticky bottom-0 bg-[#1e293b]/90 backdrop-blur-md px-8 py-6 border-t border-white/10 flex flex-col sm:flex-row gap-4">
+                <button onclick="document.getElementById('modal-create-room').classList.remove('active')" class="flex-1 px-6 py-4 rounded-2xl font-bold text-white/50 hover:text-white hover:bg-white/5 transition-colors">
+                    Cancel
+                </button>
+                <button onclick="app.confirmCreateRoom()" class="flex-[2] px-6 py-4 rounded-2xl font-black text-white bg-[#22c55e] hover:bg-[#16a34a] shadow-[0_8px_0_rgb(21,128,61)] active:translate-y-1 active:shadow-none transition-all flex items-center justify-center gap-2 text-xl">
+                    Create Room
+                    <span class="material-symbols-outlined">rocket_launch</span>
+                </button>
             </div>
         </div>
     </div>

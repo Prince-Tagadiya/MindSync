@@ -145,7 +145,7 @@ function calculateScores(submissions, players) {
 io.on('connection', (socket) => {
     console.log('⚡ Player connected:', socket.id);
 
-    socket.on('create-room', ({ playerName }) => {
+    socket.on('create-room', ({ playerName, settings }) => {
         const code = generateCode();
         const room = {
             code,
@@ -156,7 +156,7 @@ io.on('connection', (socket) => {
                 score: 0,
                 avatar: Math.floor(Math.random() * 8),
             }],
-            settings: { rounds: 5, timePerRound: 30 },
+            settings: settings || { rounds: 5, timePerRound: 30 },
             currentRound: 0,
             gameState: 'lobby',
             prompts: [],

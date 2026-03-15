@@ -118,10 +118,45 @@ const app = {
             localStorage.setItem('mindsync_name', STATE.playerName);
         }
     },
-    
     createRoom: () => {
+        // Legacy wrapper
+        app.showCreateRoomModal();
+    },
+    
+    showCreateRoomModal: () => {
         app.updatePlayerNameFromInput();
-        socket.emit('create-room', { playerName: STATE.playerName });
+        document.getElementById('modal-create-room').classList.add('active');
+    },
+
+    confirmCreateRoom: () => {
+        const rounds = 5; // hardcoded since removed from UI
+        const time = parseInt(document.getElementById('create-setting-time').value) || 30;
+        const players = parseInt(document.querySelector('input[name="create-setting-players"]:checked')?.value) || 6;
+        const mode = document.querySelector('input[name="create-mode"]:checked')?.value || 'normal';
+        const preventRepeat = document.getElementById('create-setting-prevent-repeat')?.checked || false;
+        const hideGuesses = document.getElementById('create-setting-hide-guesses')?.checked || false;
+        const showHistory = document.getElementById('create-setting-show-history')?.checked || false;
+        const countdown = document.getElementById('create-setting-countdown')?.checked || false;
+        const tts = document.getElementById('create-setting-tts')?.checked || false;
+        const confetti = document.getElementById('create-setting-confetti')?.checked || false;
+        const effects = document.getElementById('create-setting-effects')?.checked || false;
+
+        const settings = {
+            rounds,
+            timePerRound: time,
+            maxPlayers: players,
+            mode,
+            preventRepeat,
+            hideGuesses,
+            showHistory,
+            countdown,
+            tts,
+            confetti,
+            effects
+        };
+
+        socket.emit('create-room', { playerName: STATE.playerName, settings });
+        document.getElementById('modal-create-room').classList.remove('active');
     },
     
     joinRoom: () => {
@@ -469,152 +504,233 @@ const app = {
     },
 
     renderResults: (data) => {
-        const cardsCont = document.getElementById('result-cards');
-        const leadCont = document.getElementById('results-leaderboard');
-        
-        cardsCont.innerHTML = '';
-        leadCont.innerHTML = '';
-        
-        // Update Titles
         const title = document.getElementById('result-title');
         const sub = document.getElementById('result-subtitle');
-        const prompt = document.getElementById('result-prompt');
+        const cardsCont = document.getElementById('result-cards');
+        const syncText = document.getElementById('result-sync-text');
+        const syncBar = document.getElementById('result-sync-bar');
         
-        prompt.textContent = `"${data.prompt.prompt}"`;
+        cardsCont.innerHTML = '';
         
-        if (data.allMatch) {
-            title.innerHTML = 'Mind<span class="text-primary glow-text ml-2">Sync!</span>';
-            title.className = 'text-5xl md:text-7xl font-black mb-2 animate-bounce-subtle';
-            sub.textContent = 'Incredible! Everyone guessed the exact same word! (+3 pts)';
-            sub.className = 'text-xl font-bold bg-gradient-to-r from-yellow-400 to-primary text-transparent bg-clip-text';
-            
-            // Confetti effect (simple DOM based)
-            app.createConfetti();
-        } else if (data.submissions.length > 2) {
-            // Check if there are partial matches
-            const pointsGiven = data.submissions.some(s => s.points > 0);
-            if(pointsGiven) {
-                title.textContent = 'Great Minds...';
-                title.className = 'text-4xl md:text-6xl font-black text-white mb-2';
-                sub.textContent = 'Some players synced up! (+1 pt for matches)';
-                sub.className = 'text-xl text-secondary-green font-medium';
-            } else {
-                title.textContent = 'Total Miss!';
-                title.className = 'text-4xl md:text-6xl font-black text-slate-400 mb-2';
-                sub.textContent = 'Nobody guessed the same word. Better luck next round.';
-                sub.className = 'text-xl text-slate-500 font-medium';
-            }
-        } else {
-            // 2 players and no match
-            title.textContent = 'Not Quite...';
-            title.className = 'text-4xl md:text-6xl font-black text-slate-400 mb-2';
-            sub.textContent = 'Different wavelengths this time.';
-            sub.className = 'text-xl text-slate-500 font-medium';
+        // Hide confetti on new render
+        const canvas = document.getElementById('confetti-canvas');
+        if (canvas) {
+            canvas.style.display = 'none';
+            if (app.confettiAnimationId) cancelAnimationFrame(app.confettiAnimationId);
         }
         
-        // Render answer cards
-        // Group by normalized word to show matches together visually
-        const grouped = {};
-        data.submissions.forEach(sub => {
-            const norm = sub.word === '(no answer)' ? sub.id : sub.word.toLowerCase().replace(/\s+/g,'');
-            if(!grouped[norm]) grouped[norm] = [];
-            grouped[norm].push(sub);
-        });
+        const bgShapes = document.getElementById('results-bg-shapes');
+        if (bgShapes) bgShapes.classList.remove('hidden');
+
+        const controls = document.getElementById('result-footer-controls');
+        if (controls) controls.classList.remove('hidden');
         
-        Object.values(grouped).forEach(group => {
-            const isMatch = group.length > 1 && group[0].word !== '(no answer)';
-            const borderClass = isMatch ? (data.allMatch ? 'border-primary shadow-[0_0_20px_rgba(236,91,19,0.3)]' : 'border-secondary-green shadow-[0_0_15px_rgba(34,197,94,0.2)]') : 'border-white/10';
-            const bgClass = isMatch ? 'bg-white/10' : 'bg-black/40';
-            const wordColor = isMatch ? (data.allMatch ? 'text-primary' : 'text-secondary-green') : 'text-white';
-            const wordText = group[0].word === '(no answer)' ? '<span class="text-slate-500 italic text-xl p-2">Time Ran Out</span>' : group[0].word.toUpperCase();
+        const syncTextContainer = document.getElementById('result-sync-text')?.parentElement;
+        if (syncTextContainer) syncTextContainer.classList.remove('hidden');
+        
+        const counts = {};
+        data.submissions.forEach(s => {
+            if (s.word !== '(no answer)') {
+                const norm = s.word.toLowerCase();
+                counts[norm] = (counts[norm] || 0) + 1;
+            }
+        });
+        const maxMatches = Math.max(0, ...Object.values(counts));
+        
+        if (syncText && syncBar) {
+            syncText.textContent = `${maxMatches} players synced!`;
+            const syncPercent = data.submissions.length > 0 ? (maxMatches / data.submissions.length) * 100 : 0;
+            syncBar.style.width = `${syncPercent}%`;
+        }
+
+        if (data.allMatch) {
+            title.innerHTML = `Mind<span class="text-yellow-400">Sync</span>`;
+            sub.textContent = 'Results Revealed! Perfect Harmony!';
+            sub.className = 'text-lg text-yellow-400 font-black uppercase tracking-widest';
+            app.createConfetti();
+        } else if (maxMatches > 1) {
+            title.innerHTML = `Mind<span class="text-blue-400">Sync</span>`;
+            sub.textContent = 'Results Revealed! Partial Sync!';
+            sub.className = 'text-lg text-blue-200 font-medium uppercase tracking-widest';
+        } else {
+            title.innerHTML = `Mind<span class="text-red-400">Sync</span>`;
+            sub.textContent = 'Results Revealed! Total Miss!';
+            sub.className = 'text-lg text-red-200 font-medium uppercase tracking-widest';
+        }
+
+        data.submissions.forEach((p, index) => {
+            const pInfo = STATE.players.find(x => x.id === p.id);
+            const avatar = AVATARS[(pInfo ? pInfo.avatar : 0) % AVATARS.length];
+            const seed = encodeURIComponent(p.name + avatar.seedSuffix);
+            const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
             
-            let playersHtml = '';
-            group.forEach(player => {
-                const avatar = AVATARS[player.avatar % AVATARS.length];
-                const seed = encodeURIComponent(player.name + avatar.seedSuffix);
-                const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${seed}&backgroundColor=transparent`;
-                
-                playersHtml += `
-                    <div class="flex items-center gap-2 bg-black/50 rounded-full pr-4 pb-1 pt-1 pl-1 border border-white/5">
-                        <div class="size-8 rounded-full bg-gradient-to-tr ${avatar.color} p-0.5 shrink-0 shadow-lg">
-                            <img src="${avatarUrl}" class="w-full h-full rounded-full bg-slate-800 object-cover" />
-                        </div>
-                        <span class="text-slate-200 text-sm font-bold truncate">${player.name}</span>
-                        ${player.points > 0 ? `<span class="text-xs font-black text-yellow-400 ml-auto">+${player.points}</span>` : ''}
-                    </div>
-                `;
-            });
+            let isMatch = false;
+            if (p.word !== '(no answer)' && counts[p.word.toLowerCase()] > 1) {
+                isMatch = true;
+            }
+            const wordClass = isMatch ? 'matching-word' : 'text-white';
+            const staggerDelay = (index % 4) + 1;
+            
+            const sanitizedWord = p.word === '(no answer)' ? '' : p.word.replace(/'/g, "\\'");
             
             cardsCont.innerHTML += `
-                <div class="${bgClass} border-2 ${borderClass} rounded-2xl p-6 flex flex-col gap-4 transform transition-all hover:scale-105">
-                    <div class="text-center w-full min-h-[60px] flex items-center justify-center">
-                        <span class="font-black text-2xl md:text-3xl tracking-wider ${wordColor} break-words line-clamp-2">${wordText}</span>
+                <div class="player-card stagger-${staggerDelay} bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20 shadow-2xl flex flex-col items-center">
+                    <div class="w-24 h-24 rounded-full bg-gradient-to-tr ${avatar.color} mb-4 border-4 border-white/30 flex items-center justify-center overflow-hidden">
+                        <img alt="${p.name} Avatar" class="w-full h-full object-cover" src="${avatarUrl}"/>
                     </div>
-                    <div class="w-full h-px bg-white/10 my-2"></div>
-                    <div class="flex flex-col gap-2">
-                        ${playersHtml}
+                    <h2 class="text-xl font-bold text-white mb-1">${p.name}</h2>
+                    <div class="flex items-center gap-2 mt-4 bg-black/20 px-4 py-3 rounded-2xl w-full justify-center">
+                        <span class="text-2xl font-black ${wordClass} truncate max-w-full">${p.word === '(no answer)' ? 'TIMEOUT' : p.word}</span>
+                        <button onclick="app.playWordTTS('${sanitizedWord}', this)" aria-label="Listen to word" class="text-white/60 hover:text-white transition-colors" title="Listen">
+                            <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z"></path>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             `;
         });
         
-        // Render Leaderboard
-        const sorted = [...data.submissions].sort((a,b) => b.score - a.score);
-        sorted.forEach((p, i) => {
-            const isMe = p.id === socket.id;
-            const rankIcon = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `${i+1}.`;
-            leadCont.innerHTML += `
-                <div class="flex justify-between items-center p-3 rounded-xl ${isMe ? 'bg-primary/20 border border-primary/50' : 'bg-white/5 border border-transparent'}">
-                    <div class="flex items-center gap-4">
-                        <span class="text-xl font-bold w-6 text-center">${rankIcon}</span>
-                        <span class="text-white font-bold text-lg">${p.name} ${isMe ? '<span class="text-primary text-xs ml-1">(You)</span>' : ''}</span>
-                    </div>
-                    <div class="text-2xl font-black ${i===0 ? 'text-yellow-400' : 'text-slate-300'}">${p.score} <span class="text-sm text-slate-500 font-medium">pts</span></div>
-                </div>
-            `;
-        });
-        
-        // Controls
         const hOnly = document.querySelectorAll('.host-only-controls');
         const nonHMsg = document.querySelectorAll('.non-host-message');
         
         if (STATE.isHost) {
             hOnly.forEach(el => el.classList.remove('hidden'));
+            hOnly.forEach(el => el.classList.add('flex'));
             nonHMsg.forEach(el => el.classList.add('hidden'));
             
             if (data.isLastRound) {
                 document.getElementById('btn-next-round').classList.add('hidden');
+                document.getElementById('btn-next-round').classList.remove('flex');
                 document.getElementById('btn-play-again').classList.remove('hidden');
+                document.getElementById('btn-play-again').classList.add('flex');
             } else {
                 document.getElementById('btn-next-round').classList.remove('hidden');
+                document.getElementById('btn-next-round').classList.add('flex');
                 document.getElementById('btn-play-again').classList.add('hidden');
+                document.getElementById('btn-play-again').classList.remove('flex');
             }
         } else {
             hOnly.forEach(el => el.classList.add('hidden'));
+            hOnly.forEach(el => el.classList.remove('flex'));
             nonHMsg.forEach(el => el.classList.remove('hidden'));
         }
     },
     
-    createConfetti: () => {
-        const colors = ['#ec5b13', '#22c55e', '#fbbf24', '#a855f7', '#3b82f6'];
-        for(let i=0; i<50; i++) {
-            const conf = document.createElement('div');
-            conf.className = 'fixed w-3 h-3 z-50 rounded-sm';
-            conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-            conf.style.left = Math.random() * 100 + 'vw';
-            conf.style.top = '-10px';
-            conf.style.opacity = Math.random() + 0.5;
-            conf.style.transform = `rotate(${Math.random() * 360}deg)`;
-            conf.style.transition = `all ${Math.random() * 2 + 1}s cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
-            document.body.appendChild(conf);
-            
+    playWordTTS: (word, btn) => {
+        if (!word) return;
+        const msg = new SpeechSynthesisUtterance(word);
+        window.speechSynthesis.speak(msg);
+        
+        if (btn) {
+            btn.classList.add('scale-125', 'text-yellow-400');
             setTimeout(() => {
-                conf.style.top = '100vw';
-                conf.style.transform = `rotate(${Math.random() * 720}deg) translateX(${Math.random() * 200 - 100}px)`;
-            }, 50);
-            
-            setTimeout(() => conf.remove(), 3000);
+                btn.classList.remove('scale-125', 'text-yellow-400');
+            }, 500);
         }
+    },
+    
+    createConfetti: () => {
+        const canvas = document.getElementById('confetti-canvas');
+        if (!canvas) return;
+        canvas.style.display = 'block';
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        const colors = ['#ec5b13', '#8b5cf6', '#10b981', '#fbbf24']; 
+        const shapes = ['square', 'circle', 'star'];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Particle {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * canvas.height;
+            }
+            reset() {
+                this.radius = Math.random() * 6 + 6; 
+                this.x = Math.random() * canvas.width;
+                this.y = -20;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.shape = shapes[Math.floor(Math.random() * shapes.length)];
+                this.vy = Math.random() * 2 + 1; 
+                this.vx = (Math.random() - 0.5) * 1.5;
+                this.opacity = Math.random() * 0.5 + 0.3;
+                this.rotation = Math.random() * 360;
+                this.rotationSpeed = (Math.random() - 0.5) * 5;
+            }
+            update() {
+                this.y += this.vy;
+                this.x += this.vx;
+                this.rotation += this.rotationSpeed;
+                if (this.y > canvas.height + 20) {
+                    this.reset();
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation * Math.PI / 180);
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = this.color;
+
+                if (this.shape === 'square') {
+                    ctx.fillRect(-this.radius, -this.radius, this.radius * 2, this.radius * 2);
+                } else if (this.shape === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (this.shape === 'star') {
+                    this.drawStar(0, 0, 5, this.radius * 1.5, this.radius * 0.6);
+                }
+                ctx.restore();
+            }
+            drawStar(cx, cy, spikes, outerRadius, innerRadius) {
+                let rot = Math.PI / 2 * 3;
+                let x = cx;
+                let y = cy;
+                let step = Math.PI / spikes;
+
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - outerRadius);
+                for (let i = 0; i < spikes; i++) {
+                    x = cx + Math.cos(rot) * outerRadius;
+                    y = cy + Math.sin(rot) * outerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                    x = cx + Math.cos(rot) * innerRadius;
+                    y = cy + Math.sin(rot) * innerRadius;
+                    ctx.lineTo(x, y);
+                    rot += step;
+                }
+                ctx.lineTo(cx, cy - outerRadius);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+        function init() {
+            particles = [];
+            const count = Math.floor(window.innerWidth / 15);
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+        }
+        function animate() {
+            if (canvas.style.display === 'none') return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            app.confettiAnimationId = requestAnimationFrame(animate);
+        }
+        init();
+        animate();
     }
 };
 
@@ -675,6 +791,14 @@ socket.on('round-start', (data) => {
     STATE.submittedPlayers.clear();
     STATE.currentRound = data.round;
     STATE.totalRounds = data.totalRounds;
+    
+    if (data.round === 1) {
+        STATE.gameStartTime = Date.now();
+        STATE.fastestSyncDuration = Infinity;
+        STATE.fastestSyncRound = '-';
+        STATE.uniqueWords = new Set();
+    }
+    STATE.roundStartTime = Date.now();
     
     // Reset game screen
     app.clearError();
@@ -760,6 +884,29 @@ socket.on('player-submitted', ({ playerId, submittedCount, totalPlayers }) => {
 });
 
 socket.on('round-results', (data) => {
+    // Stats calculation
+    const roundDuration = Date.now() - (STATE.roundStartTime || Date.now());
+    if (data.allMatch) {
+         if (roundDuration < (STATE.fastestSyncDuration || Infinity)) {
+             STATE.fastestSyncDuration = roundDuration;
+             STATE.fastestSyncRound = STATE.currentRound;
+         }
+    }
+    
+    // Add unique words
+    const counts = {};
+    data.submissions.forEach(s => {
+        if (s.word !== '(no answer)') {
+            counts[s.word.toLowerCase()] = (counts[s.word.toLowerCase()] || 0) + 1;
+        }
+    });
+    for (const word in counts) {
+        if (counts[word] === 1) {
+            if(!STATE.uniqueWords) STATE.uniqueWords = new Set();
+            STATE.uniqueWords.add(word);
+        }
+    }
+
     // Add to history
     STATE.history.push({
         round: STATE.currentRound,
@@ -780,18 +927,39 @@ socket.on('round-results', (data) => {
 });
 
 socket.on('game-over', (data) => {
-    document.getElementById('result-title').textContent = 'Game Over!';
-    document.getElementById('result-title').className = 'text-5xl md:text-7xl font-black text-white mb-2';
+    document.getElementById('result-title').innerHTML = `Mind<span class="text-white">Sync</span>`;
     
     document.getElementById('result-subtitle').innerHTML = `<span class="text-yellow-400 font-bold text-2xl">🏆 ${data.winner.name} Wins!</span>`;
+    document.getElementById('result-subtitle').className = 'text-center';
     
-    document.getElementById('result-prompt').textContent = 'Final Standings';
-    document.getElementById('result-cards').innerHTML = ''; // Hide prompt cards
+    const bgShapes = document.getElementById('results-bg-shapes');
+    if (bgShapes) bgShapes.classList.add('hidden');
+    
+    const cardsCont = document.getElementById('result-cards');
+    cardsCont.innerHTML = `<div class="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20 shadow-2xl col-span-1 sm:col-span-2 lg:col-span-4 text-center">
+        <h2 class="text-3xl font-black text-yellow-400 mb-6">Final Standings</h2>
+        <div class="space-y-4 max-w-md mx-auto">
+            ${data.players.map((p, i) => `
+                <div class="flex justify-between items-center text-xl bg-black/20 px-6 py-4 rounded-2xl">
+                    <span class="font-bold text-white">${i+1}. ${p.name}</span>
+                    <span class="font-black text-yellow-400">${p.score} <span class="text-sm">pts</span></span>
+                </div>
+            `).join('')}
+        </div>
+    </div>`;
+    
+    const controls = document.getElementById('result-footer-controls');
+    if (controls) controls.classList.remove('hidden');
+    
+    const syncTextContainer = document.getElementById('result-sync-text')?.parentElement;
+    if (syncTextContainer) syncTextContainer.classList.add('hidden');
     
     // Display buttons
     if (STATE.isHost) {
         document.getElementById('btn-next-round').classList.add('hidden');
+        document.getElementById('btn-next-round').classList.remove('flex');
         document.getElementById('btn-play-again').classList.remove('hidden');
+        document.getElementById('btn-play-again').classList.add('flex');
     }
 });
 
