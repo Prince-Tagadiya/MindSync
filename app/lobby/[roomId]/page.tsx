@@ -9,8 +9,11 @@ import { SoundEffects } from "@/lib/sounds";
 
 export default function LobbyPage() {
   const params = useParams();
+  const rawRoomId = params.roomId as string;
+  // Sanitize: Take only the first part in case sharing text got appended to URL
+  const roomId = rawRoomId.split('%20')[0].split(' ')[0].split('%20')[0].toUpperCase();
+  
   const router = useRouter();
-  const roomId = params.roomId as string;
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,11 +87,11 @@ export default function LobbyPage() {
 
   const handleInvite = async () => {
     SoundEffects.playClick();
-    const inviteUrl = window.location.href;
+    const cleanUrl = `${window.location.origin}/lobby/${roomId}`;
     const shareData = {
       title: "Join my MindSync Room!",
-      text: `Let's sync minds! Join my room ${roomId} and see our chemistry.`,
-      url: inviteUrl,
+      text: `Let's sync minds! Join my room ${roomId}`,
+      url: cleanUrl,
     };
 
     if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
@@ -97,11 +100,11 @@ export default function LobbyPage() {
       } catch (err) {
         console.log("Share cancelled or failed", err);
         // Fallback to copy URL only
-        navigator.clipboard.writeText(inviteUrl);
+        navigator.clipboard.writeText(cleanUrl);
         alert("Invite link copied!");
       }
     } else {
-      navigator.clipboard.writeText(inviteUrl);
+      navigator.clipboard.writeText(cleanUrl);
       alert("Invite link copied!");
     }
   };
@@ -248,12 +251,12 @@ export default function LobbyPage() {
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
-          <BonusCard title="ULTRA SYNC" reward="+50" condition="Match same sec" icon="bolt" color="text-yellow-400" bgColor="bg-yellow-400/10" />
-          <BonusCard title="HARMONY" reward="+25" condition="WHOLE room sync" icon="join_inner" color="text-emerald-400" bgColor="bg-emerald-400/10" />
-          <BonusCard title="MIND TWINS" reward="+20" condition="Exact word sync" icon="handshake" color="text-[#ec5b13]" bgColor="bg-[#ec5b13]/10" />
-          <BonusCard title="LATE SAVE" reward="+15" condition="Sync in final 5s" icon="history" color="text-orange-400" bgColor="bg-orange-400/10" />
-          <BonusCard title="HIGH SYNC" reward="+10" condition="Close spell match" icon="auto_fix_high" color="text-purple-400" bgColor="bg-purple-400/10" />
-          <BonusCard title="FIRST BLOOD" reward="+5" condition="1st to submit" icon="rocket_launch" color="text-blue-400" bgColor="bg-blue-400/10" />
+          <DetailedBonusCard title="ULTRA SYNC" reward="+50" condition="Exact match within same second!" description="Match same word + same second. The peak of neurology match." icon="bolt" color="text-yellow-400" bgColor="bg-yellow-400/10" />
+          <DetailedBonusCard title="HARMONY" reward="+25" condition="Whole room matches word." description="Every player in the lobby matches the word exactly. Unity points!" icon="join_inner" color="text-emerald-400" bgColor="bg-emerald-400/10" />
+          <DetailedBonusCard title="MIND TWINS" reward="+20" condition="Exact word sync (any time)." description="Same spelling. One soul, two players." icon="handshake" color="text-[#ec5b13]" bgColor="bg-[#ec5b13]/10" />
+          <DetailedBonusCard title="LATE SAVE" reward="+15" condition="Sync in final 5 seconds." description="Pressure makes diamonds. Sync just before times up!" icon="history" color="text-orange-400" bgColor="bg-orange-400/10" />
+          <DetailedBonusCard title="HIGH SYNC" reward="+10" condition="Phonetic/Spelling similarity." description="Close matches or common spellings (>70% match)." icon="auto_fix_high" color="text-purple-400" bgColor="bg-purple-400/10" />
+          <DetailedBonusCard title="FIRST BLOOD" reward="+5" condition="The first valid submission." description="Speed is life. Be the fastest player to enter a word." icon="rocket_launch" color="text-blue-400" bgColor="bg-blue-400/10" />
         </div>
       </div>
 
@@ -363,43 +366,55 @@ export default function LobbyPage() {
           </button>
         </div>
       </div>
-      {/* Join Room Modal (For New Invitees) */}
+      {/* Join Room Overlay (Full Screen Join Experience) */}
       {showJoinModal && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-2xl flex items-center justify-center p-4 animate-fade-in-up">
-          <div className="relative w-full max-w-md glass-panel rounded-[2.5rem] shadow-2xl border border-white/10 p-10 flex flex-col gap-8 text-center bg-[#0a0f1e]/90 overflow-hidden">
-             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#ec5b13] to-transparent"></div>
-             
-             <div>
-               <div className="w-20 h-20 bg-[#ec5b13]/20 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-12">
-                  <span className="material-symbols-outlined text-[#ec5b13] text-5xl">psychology</span>
-               </div>
-               <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase mb-2">Ready to Sync?</h2>
-               <p className="text-slate-400 font-medium">You've been invited to join room <span className="text-[#ec5b13] font-bold tracking-widest">{roomId}</span></p>
+        <div className="fixed inset-0 z-[100] bg-[#060e20] flex flex-col items-center justify-center p-6 text-center overflow-hidden">
+          {/* Background Decor from Landing */}
+          <div className="absolute inset-0 z-0 opacity-50 pointer-events-none">
+             <div className="absolute inset-0 bg-gradient-to-b from-[#060e20] to-black"></div>
+             <div className="absolute top-[10%] left-[10%] w-96 h-96 bg-[#ec5b13]/10 rounded-full blur-[100px]"></div>
+             <div className="absolute bottom-[20%] right-[10%] w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[120px]"></div>
+          </div>
+
+          <div className="relative z-10 w-full max-w-lg space-y-10 animate-entrance">
+             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md mb-2">
+                <span className="w-2 h-2 rounded-full bg-[#ec5b13] animate-pulse"></span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#ec5b13]">Invite Link Active</span>
              </div>
 
-             <div className="space-y-4">
-               <div className="relative group">
-                  <input 
-                    autoFocus
-                    value={joinName}
-                    onChange={(e) => setJoinName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-                    placeholder="ENTER YOUR NAME"
-                    maxLength={15}
-                    className="w-full bg-white/5 border-2 border-white/10 rounded-2xl h-16 px-6 text-center text-white font-black text-xl uppercase tracking-widest focus:border-[#ec5b13] transition-all outline-none placeholder:text-slate-600 placeholder:font-bold"
-                  />
-                  <div className="absolute inset-y-0 right-4 flex items-center text-slate-600 group-focus-within:text-[#ec5b13] transition-colors">
-                     <span className="material-symbols-outlined">badge</span>
-                  </div>
-               </div>
-               
-               <button 
-                onClick={handleJoin}
-                disabled={!joinName.trim() || joining}
-                className="w-full py-5 bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white font-black rounded-2xl text-xl shadow-[0_10px_30px_-5px_rgba(236,91,19,0.3)] transition-all hover:translate-y-[-2px] active:translate-y-0 disabled:opacity-50"
-               >
-                 {joining ? "Joining..." : "JOIN NOW"}
-               </button>
+             <div>
+               <h1 className="text-7xl font-black italic tracking-tighter uppercase text-white mb-4">MindSync</h1>
+               <p className="text-slate-400 font-bold max-w-xs mx-auto">Ready to bridge your thoughts? Join current room <span className="text-white font-black">{roomId}</span></p>
+             </div>
+
+             <div className="space-y-4 bg-white/[0.03] border border-white/5 p-8 rounded-[3rem] backdrop-blur-3xl shadow-2xl">
+                <div className="space-y-1 mb-4">
+                   <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Room ID (Locked)</p>
+                   <div className="bg-white/5 border border-white/10 h-14 rounded-2xl flex items-center justify-center text-white/40 font-black text-2xl tracking-[0.3em] uppercase">
+                      {roomId}
+                   </div>
+                </div>
+
+                <div className="relative group">
+                   <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] mb-1">Your Match Name</p>
+                   <input 
+                      autoFocus
+                      value={joinName}
+                      onChange={(e) => setJoinName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                      placeholder="GUEST_PLAYER_NAME"
+                      maxLength={15}
+                      className="w-full bg-white/10 border-2 border-white/10 rounded-2xl h-18 px-6 text-center text-white font-black text-2xl uppercase tracking-widest focus:border-[#ec5b13] transition-all outline-none"
+                   />
+                </div>
+
+                <button 
+                  onClick={handleJoin}
+                  disabled={!joinName.trim() || joining}
+                  className="w-full py-6 bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white font-black rounded-3xl text-2xl shadow-[0_20px_40px_-10px_rgba(236,91,19,0.3)] transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                >
+                   {joining ? "SYNCING..." : "JOIN THE ARENA"}
+                </button>
              </div>
           </div>
         </div>
@@ -448,16 +463,19 @@ export default function LobbyPage() {
   );
 }
 
-function BonusCard({ title, reward, condition, icon, color, bgColor }: any) {
+function DetailedBonusCard({ title, reward, condition, description, icon, color, bgColor }: any) {
   return (
-    <div className={`p-4 rounded-2xl border border-white/5 ${bgColor} backdrop-blur-sm flex flex-col gap-2 transition-all hover:scale-[1.02]`}>
+    <div className={`p-5 rounded-3xl border border-white/5 ${bgColor} backdrop-blur-sm flex flex-col gap-3 transition-all hover:scale-[1.02] group`}>
       <div className="flex items-center justify-between">
-        <span className={`material-symbols-outlined ${color} text-2xl`}>{icon}</span>
-        <span className={`font-black text-lg ${color}`}>{reward}</span>
+        <div className={`w-12 h-12 rounded-2xl ${bgColor} flex items-center justify-center`}>
+          <span className={`material-symbols-outlined ${color} text-2xl`}>{icon}</span>
+        </div>
+        <span className={`font-black text-xl ${color}`}>{reward}</span>
       </div>
       <div>
-        <p className="text-white font-bold text-xs uppercase tracking-wider">{title}</p>
-        <p className="text-white/40 text-[10px] font-medium leading-tight mt-1">{condition}</p>
+        <p className="text-white font-black text-sm uppercase tracking-wider mb-1">{title}</p>
+        <p className={`${color} text-[10px] font-bold uppercase tracking-widest mb-2 opacity-80`}>{condition}</p>
+        <p className="text-slate-400 text-xs font-medium leading-relaxed">{description}</p>
       </div>
     </div>
   );

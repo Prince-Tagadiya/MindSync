@@ -11,8 +11,10 @@ import { toBlob } from "html-to-image";
 
 export default function ResultPage() {
   const params = useParams();
+  const rawRoomId = params.roomId as string;
+  const roomId = rawRoomId.split('%20')[0].split(' ')[0].toUpperCase();
+  
   const router = useRouter();
-  const roomId = params.roomId as string;
   const sessionId = typeof window !== "undefined" ? getSessionId() : "";
 
   const [room, setRoom] = useState<Room | null>(null);
@@ -308,7 +310,24 @@ export default function ResultPage() {
 
   const personalSyncs = pairwise.filter(p => p.p1 === room.players.find(p => p.id === sessionId)?.name || p.p2 === room.players.find(p => p.id === sessionId)?.name);
 
-  const topPartner = pairwise.length > 0 ? pairwise.reduce((prev, current) => (prev.score > current.score) ? prev : current) : null;
+  // Identify Duo Teams
+  const duoTeams: any[] = [];
+  if (room && room.players.length >= 4) {
+    const sorted = [...pairwise].sort((a,b) => b.score - a.score);
+    if (sorted.length > 0) {
+      const best = sorted[0];
+      duoTeams.push({ ...best, rankLabel: 'THE SUPREME DUO' });
+      
+      const usedNames = [best.p1, best.p2];
+      const otherPair = sorted.find(p => !usedNames.includes(p.p1) && !usedNames.includes(p.p2));
+      if (otherPair) duoTeams.push({ ...otherPair, rankLabel: 'THE ELITE TEAM' });
+    }
+  } else if (pairwise.length > 0) {
+    const best = pairwise.reduce((prev, current) => (prev.score > current.score) ? prev : current);
+    duoTeams.push({ ...best, rankLabel: 'THE SUPREME DUO' });
+  }
+
+  const topPartner = duoTeams.length > 0 ? duoTeams[0] : null;
   const storyTopPartners = topPartner ? {
      p1: room?.players.find(p => p.name === topPartner.p1) || { name: topPartner.p1 },
      p2: room?.players.find(p => p.name === topPartner.p2) || { name: topPartner.p2 }
@@ -401,38 +420,42 @@ export default function ResultPage() {
           </div>
         )}
 
-        {/* Twins Duo Highlight */}
-        {bestPair.score > 0.5 && (
-          <div className="mb-16 md:mb-20 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-             <h3 className="text-xl md:text-2xl font-black uppercase italic mb-8 flex items-center justify-center gap-3 shrink-0">
-                <span className="material-symbols-outlined text-yellow-400">auto_awesome</span>
-                THE TWINS DUO
-             </h3>
-             
-             <div className="bg-white/[0.02] border border-yellow-400/20 rounded-[2.5rem] p-8 md:p-10 bg-gradient-to-br from-yellow-400/5 via-transparent to-transparent relative group max-w-2xl mx-auto">
-                <div className="flex flex-row items-center justify-center gap-6 md:gap-10">
-                   <div className="text-center">
-                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-800 border-2 border-yellow-400/50 flex items-center justify-center text-2xl md:text-4xl font-black text-white shadow-[0_0_20px_rgba(250,204,21,0.2)]">
-                         {bestPair.p1.charAt(0)}
-                      </div>
-                      <p className="mt-3 md:mt-4 font-black uppercase text-[10px] md:text-sm tracking-widest text-slate-300">{bestPair.p1}</p>
-                   </div>
+        {/* Sync Duo Highlights */}
+        {duoTeams.length > 0 && (
+          <div className="mb-16 md:mb-20 space-y-12 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+             {duoTeams.map((team, idx) => (
+                <div key={idx} className="space-y-6">
+                   <h3 className="text-xl md:text-2xl font-black uppercase italic flex items-center justify-center gap-3">
+                      <span className="material-symbols-outlined text-yellow-400">{idx === 0 ? 'military_tech' : 'auto_awesome'}</span>
+                      {team.rankLabel}
+                   </h3>
                    
-                   <div className="flex flex-col items-center">
-                      <div className="bg-yellow-400 text-[#0a0f1d] px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter mb-3">
-                         {Math.round(bestPair.score * 100)}% SYNC
-                      </div>
-                      <span className="material-symbols-outlined text-yellow-500 text-3xl md:text-5xl animate-pulse">handshake</span>
-                   </div>
+                   <div className={`bg-white/[0.02] border ${idx === 0 ? 'border-yellow-400/20 shadow-[0_0_50px_rgba(250,204,21,0.05)]' : 'border-white/10'} rounded-[2.5rem] p-8 md:p-10 relative overflow-hidden group max-w-2xl mx-auto`}>
+                      <div className="flex flex-row items-center justify-center gap-6 md:gap-12 relative z-10">
+                         <div className="text-center">
+                            <div className={`w-16 h-16 md:w-24 md:h-24 rounded-3xl flex items-center justify-center text-2xl md:text-4xl font-black text-white ${idx === 0 ? 'bg-yellow-400/10 border-2 border-yellow-400' : 'bg-white/5 border border-white/10'}`}>
+                               {team.p1.charAt(0)}
+                            </div>
+                            <p className="mt-3 md:mt-4 font-black uppercase text-[10px] md:text-sm tracking-widest text-slate-300">{team.p1}</p>
+                         </div>
+                         
+                         <div className="flex flex-col items-center">
+                            <div className={`${idx === 0 ? 'bg-yellow-400 text-black' : 'bg-white/10 text-white'} px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest mb-3`}>
+                               {Math.round(team.score)}% SYNC
+                            </div>
+                            <span className={`material-symbols-outlined text-3xl md:text-5xl animate-pulse ${idx === 0 ? 'text-yellow-400' : 'text-slate-500'}`}>handshake</span>
+                         </div>
 
-                   <div className="text-center">
-                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-800 border-2 border-yellow-400/50 flex items-center justify-center text-2xl md:text-4xl font-black text-white shadow-[0_0_20px_rgba(250,204,21,0.2)]">
-                         {bestPair.p2.charAt(0)}
+                         <div className="text-center">
+                            <div className={`w-16 h-16 md:w-24 md:h-24 rounded-3xl flex items-center justify-center text-2xl md:text-4xl font-black text-white ${idx === 0 ? 'bg-yellow-400/10 border-2 border-yellow-400' : 'bg-white/5 border border-white/10'}`}>
+                               {team.p2.charAt(0)}
+                            </div>
+                            <p className="mt-3 md:mt-4 font-black uppercase text-[10px] md:text-sm tracking-widest text-slate-300">{team.p2}</p>
+                         </div>
                       </div>
-                      <p className="mt-3 md:mt-4 font-black uppercase text-[10px] md:text-sm tracking-widest text-slate-300">{bestPair.p2}</p>
                    </div>
                 </div>
-             </div>
+             ))}
           </div>
         )}
 
