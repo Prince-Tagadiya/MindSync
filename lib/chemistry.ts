@@ -146,3 +146,38 @@ export function calculateChemistry(
     rounds: roundsTaken
   };
 }
+
+export function calculatePairwiseChemistry(
+  roundHistory: Record<number, Record<string, string>>,
+  players: { id: string, name: string }[]
+) {
+  const results: { p1: string, p2: string, score: number, label: string }[] = [];
+  
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const p1 = players[i];
+      const p2 = players[j];
+      
+      let totalSim = 0;
+      let count = 0;
+      Object.values(roundHistory).forEach(guesses => {
+        if (guesses[p1.id] && guesses[p2.id]) {
+          totalSim += getEnhancedSimilarity(guesses[p1.id], guesses[p2.id]);
+          count++;
+        }
+      });
+      
+      const avg = totalSim / (count || 1);
+      const score = Math.round(avg * 100);
+      
+      let label = "Soul Sync";
+      if (score >= 90) label = "Mind Twins";
+      else if (score >= 75) label = "Deeply Sync";
+      else if (score >= 50) label = "Good Sync";
+      else label = "Developing";
+      
+      results.push({ p1: p1.name, p2: p2.name, score, label });
+    }
+  }
+  return results;
+}

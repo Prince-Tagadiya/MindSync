@@ -103,31 +103,31 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col min-h-screen w-full relative z-10 w-full overflow-x-hidden">
-      <header id="global-header" className="flex items-center justify-between whitespace-nowrap px-6 md:px-20 py-6 animate-fade-in-up flex-shrink-0 z-10 w-full relative">
-        <div className="flex items-center gap-3 text-white cursor-pointer">
-          <a href="/" className="flex items-center gap-3">
-            <div className="size-8 bg-[#ec5b13] rounded-lg flex items-center justify-center shadow-lg animate-bounce-subtle">
-              <span className="material-symbols-outlined text-white">psychology</span>
+      <header id="global-header" className="flex items-center justify-between whitespace-nowrap px-4 md:px-20 py-4 md:py-6 animate-fade-in-up flex-shrink-0 z-10 w-full relative">
+        <div className="flex items-center gap-2 md:gap-3 text-white cursor-pointer group">
+          <a href="/" className="flex items-center gap-2 md:gap-3">
+            <div className="w-8 h-8 md:w-10 md:h-10 bg-[#ec5b13] rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+              <span className="material-symbols-outlined text-white text-base md:text-xl">psychology</span>
             </div>
-            <h2 className="text-white text-2xl font-black leading-tight tracking-tight">MindSync</h2>
+            <h2 className="text-white text-xl md:text-2xl font-black leading-tight tracking-tight">MindSync</h2>
           </a>
         </div>
-        <div className="flex items-center gap-4">
-          <button className="px-6 py-2 bg-white/10 hover:bg-white/20 transition-colors text-white text-sm font-bold rounded-xl border border-white/10 shadow-lg">How to Play</button>
-          <button className="w-10 h-10 rounded-full border-2 border-[#ec5b13] bg-[#ec5b13]/20 flex items-center justify-center text-[#ec5b13] hover:bg-[#ec5b13]/40 transition-colors shadow-lg">
-            <span className="material-symbols-outlined text-sm">person</span>
+        <div className="flex items-center gap-2 md:gap-4 scale-90 md:scale-100 origin-right">
+          <button className="px-4 md:px-6 py-2 bg-white/10 hover:bg-white/20 transition-colors text-white text-[10px] md:text-sm font-bold rounded-xl border border-white/10 shadow-lg">Rules</button>
+          <button className="w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-[#ec5b13] bg-[#ec5b13]/20 flex items-center justify-center text-[#ec5b13] hover:bg-[#ec5b13]/40 transition-colors shadow-lg">
+            <span className="material-symbols-outlined text-xs md:text-sm">person</span>
           </button>
         </div>
       </header>
 
       <main id="home-screen" className="flex-1 flex flex-col items-center justify-center px-4 pt-4 pb-16">
-        <div className="max-w-[800px] w-full text-center flex flex-col items-center gap-8 z-10">
-          <div className="flex flex-col gap-4 animate-fade-in-up">
-            <h1 className="text-white text-6xl md:text-8xl font-black leading-tight tracking-tighter glow-text animate-pulse-slow">
+        <div className="max-w-[800px] w-full text-center flex flex-col items-center gap-6 md:gap-8 z-10">
+          <div className="flex flex-col gap-3 md:gap-4 animate-fade-in-up">
+            <h1 className="text-white text-5xl md:text-9xl font-black leading-none tracking-tighter glow-text animate-pulse-slow italic uppercase border-b-4 border-[#ec5b13]/20 pb-2">
               MindSync
             </h1>
-            <h2 className="text-slate-200 text-lg md:text-2xl font-medium max-w-lg mx-auto leading-relaxed animate-fade-in-up animate-delay-100">
-              Say the same word without planning. Connect your thoughts to win.
+            <h2 className="text-slate-300 text-base md:text-2xl font-medium max-w-[280px] md:max-w-lg mx-auto leading-relaxed animate-fade-in-up animate-delay-100 italic opacity-80">
+              Think alike. Type together. Win as one.
             </h2>
           </div>
 
@@ -274,10 +274,10 @@ export default function HomePage() {
                   <span className="material-symbols-outlined text-[#ec5b13] font-bold">groups</span>
                   <h3 className="text-lg font-bold text-white">Player Settings</h3>
                 </div>
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                   {[2, 3, 4, 5, 6].map(num => (
-                    <button key={num} onClick={() => setCreatePlayers(num)} className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all hover:scale-105 font-bold ${createPlayers === num ? 'border-[#ec5b13] bg-[#ec5b13]/20 text-white shadow-[0_0_15px_rgba(236,91,19,0.3)]' : 'border-white/10 bg-white/5 hover:border-white/30 text-white/50 hover:text-white'}`}>
-                      <span className="text-xl">{num}</span>
+                    <button key={num} onClick={() => setCreatePlayers(num)} className={`flex flex-col items-center justify-center p-3 md:p-4 rounded-2xl border-2 transition-all hover:scale-105 font-black text-sm md:text-xl ${createPlayers === num ? 'border-[#ec5b13] bg-[#ec5b13]/20 text-white shadow-[0_0_15px_rgba(236,91,19,0.3)]' : 'border-white/10 bg-white/5 hover:border-white/30 text-white/50 hover:text-white'}`}>
+                      {num}
                     </button>
                   ))}
                 </div>

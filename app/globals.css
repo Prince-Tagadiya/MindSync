@@ -128,3 +128,24 @@ body {
 .player-card:hover { transform: translateY(-5px); }
 
 /* Remove old global UI stuff */
+
+/* Game Feel Animations */
+@keyframes sync-flash {
+  0% { background: rgba(255, 255, 255, 0); opacity: 0; }
+  10% { background: rgba(255, 255, 255, 0.9); opacity: 1; }
+  100% { background: rgba(255, 255, 255, 0); opacity: 0; }
+}
+
+@keyframes ray-spin {
+  from { transform: rotate(0deg) scale(0.8); }
+  to { transform: rotate(360deg) scale(2); }
+}
+
+@keyframes float-ultra {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.05) translateY(-20px); }
+}
+
+.animate-sync-flash { animation: sync-flash 1s ease-out forwards; }
+.animate-ray-spin { animation: ray-spin 15s linear infinite; }
+.animate-float-ultra { animation: float-ultra 3s ease-in-out infinite; }

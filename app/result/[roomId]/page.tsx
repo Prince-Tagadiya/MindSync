@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSessionId, clearSavedRoomId } from "@/lib/session";
 import { listenToRoom, leaveRoom, playAgain } from "@/lib/firestore";
-import { Room } from "@/lib/types";
-import { calculateChemistry, getEnhancedSimilarity } from "@/lib/chemistry";
+import { Room, Player } from "@/lib/types";
+import { calculateChemistry, getEnhancedSimilarity, getAvgSim, calculatePairwiseChemistry } from "@/lib/chemistry";
 import { SoundEffects } from "@/lib/sounds";
 
 export default function ResultPage() {
@@ -134,7 +134,6 @@ export default function ResultPage() {
     let animationId: number;
     let stopSpawning = false;
     
-    // Stop spawning more confetti after 6 seconds for a "slow finish"
     const stopTimeout = setTimeout(() => {
       stopSpawning = true;
     }, 6000);
@@ -147,14 +146,11 @@ export default function ResultPage() {
       particles.forEach(p => {
         p.update();
         if (stopSpawning && p.y > canvas.height) {
-           p.opacity = 0; // Don't draw or reset
+           p.opacity = 0; 
         } else {
            p.draw();
            allGone = false;
         }
-        
-        // If we want a slow finish, we can stop calling reset() inside update()
-        // Let's modify Particle class update slightly below
       });
 
       if (!allGone || !stopSpawning) {
@@ -162,7 +158,6 @@ export default function ResultPage() {
       }
     }
 
-    // Modify Particle class for internal stopping logic
     const originalUpdate = Particle.prototype.update;
     Particle.prototype.update = function() {
       this.y += this.vy;
@@ -172,7 +167,7 @@ export default function ResultPage() {
         if (!stopSpawning) {
           this.reset();
         } else {
-          this.opacity *= 0.95; // Fade out as they fall if we're stopping
+          this.opacity *= 0.95; 
         }
       }
     };
@@ -204,7 +199,7 @@ export default function ResultPage() {
 
   if (loading || !room) {
     return (
-      <div className="flex-1 flex items-center justify-center p-8 text-center bg-[#0a0f1e] text-white">
+      <div className="flex-1 flex items-center justify-center min-h-screen bg-[#0a0f1e] text-white">
         <div>
           <span className="material-symbols-outlined text-6xl text-[#ec5b13] animate-spin mb-4">psychology</span>
           <p className="font-black animate-pulse text-2xl tracking-tighter italic">MEASURING BRAIN SYNC...</p>
@@ -213,257 +208,275 @@ export default function ResultPage() {
     );
   }
 
-  const chemistry = calculateChemistry(room.roundHistory, room.totalRounds || 5, room.players.length);
-  const matchWord = room.usedWords[room.usedWords.length - 1] || "UNDETERMINED";
-  const gameTime = Math.floor((Date.now() - (room.createdAt || Date.now())) / 1000);
-  const timeFormatted = `${Math.floor(gameTime / 60).toString().padStart(2, '0')}:${(gameTime % 60).toString().padStart(2, '0')}`;
+  // Handle results persistence if room is already reset but we're on results page
+  const displayData = room.status === "finished" ? {
+    history: room.roundHistory,
+    players: room.players,
+    rounds: room.round
+  } : room.lastMatchResults ? {
+    history: room.lastMatchResults.roundHistory,
+    players: room.players.map(p => ({ 
+      ...p, 
+      coins: room.lastMatchResults?.playerCoins[p.id] !== undefined ? room.lastMatchResults.playerCoins[p.id] : p.coins 
+    })),
+    rounds: room.lastMatchResults.totalRounds
+  } : {
+    history: room.roundHistory,
+    players: room.players,
+    rounds: room.round
+  };
+
+  const chemistry = calculateChemistry(displayData.history, displayData.rounds, displayData.players.length);
+  const pairwise = calculatePairwiseChemistry(displayData.history, displayData.players);
+  
+  // Calculate Best Pair (Twins Duo)
+  const getBestPair = () => {
+    let best = { p1: "", p2: "", score: 0 };
+    const players = displayData.players;
+    const history = displayData.history;
+    
+    for (let i = 0; i < players.length; i++) {
+      for (let j = i + 1; j < players.length; j++) {
+        let totalSim = 0;
+        let rounds = 0;
+        Object.values(history).forEach(guesses => {
+          if (guesses[players[i].id] && guesses[players[j].id]) {
+            totalSim += getEnhancedSimilarity(guesses[players[i].id], guesses[players[j].id]);
+            rounds++;
+          }
+        });
+        const avg = totalSim / (rounds || 1);
+        if (avg > best.score) {
+          best = { p1: players[i].name, p2: players[j].name, score: avg };
+        }
+      }
+    }
+    return best;
+  };
+
+  const bestPair = getBestPair();
+  const sortedByCoins = [...displayData.players].sort((a,b) => (b.coins || 0) - (a.coins || 0));
+
+  const checkAllMatch = (guesses: Record<string, string>) => {
+    const words = Object.values(guesses);
+    if (words.length < 2) return false;
+    return words.every(w => w.toLowerCase().trim() === words[0].toLowerCase().trim());
+  };
+
+  const personalSyncs = pairwise.filter(p => p.p1 === room.players.find(p => p.id === sessionId)?.name || p.p2 === room.players.find(p => p.id === sessionId)?.name);
 
   return (
-    <div className="min-h-screen bg-[#0a0f1e] text-slate-100 relative overflow-x-hidden selection:bg-primary/30">
-      <canvas id="confetti-canvas" className="fixed top-0 left-0 w-full h-full pointer-events-none z-50"></canvas>
+    <main className="min-h-screen bg-[#0a0f1d] text-white relative overflow-x-hidden pb-32 sm:pb-20 selection:bg-[#ec5b13]/30">
+      <canvas id="confetti-canvas" className="fixed inset-0 pointer-events-none z-50"></canvas>
       
-      {/* Background Shapes */}
+      {/* Background Decor */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-[#ec5b13] opacity-10 blur-[100px] rounded-full animate-pulse-slow"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[30rem] h-[30rem] bg-indigo-600 opacity-10 blur-[120px] rounded-full animate-float" style={{ animationDelay: "-2s" }}></div>
-        <div className="absolute top-[20%] right-[10%] w-64 h-64 bg-emerald-500 opacity-10 blur-[80px] rounded-full animate-float-shape"></div>
+        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-[#ec5b13]/10 blur-[150px] rounded-full animate-pulse"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[70%] h-[70%] bg-purple-600/10 blur-[180px] rounded-full animate-pulse" style={{ animationDelay: '2s' }}></div>
       </div>
 
-      <div className="relative z-10 flex flex-col min-h-screen font-display">
-        {/* Navigation */}
-        <header className="flex items-center justify-between px-6 py-4 md:px-12">
-          <div className="flex items-center gap-3">
-            <div className="bg-[#ec5b13] p-1.5 rounded-lg shadow-lg shadow-[#ec5b13]/20">
-              <span className="material-symbols-outlined text-white text-2xl">psychology</span>
-            </div>
-            <h2 className="text-xl font-black tracking-tight text-white uppercase italic">MindSync</h2>
+      <div className="relative z-10 max-w-5xl mx-auto px-4 md:px-10 pt-12 md:pt-20">
+        {/* Header */}
+        <div className="text-center space-y-4 mb-16 md:mb-20 animate-entrance">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md mb-2">
+             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Match Concluded</span>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => { SoundEffects.playClick(); navigator.clipboard.writeText(window.location.href); }} className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all border border-white/10 text-slate-300">
-              <span className="material-symbols-outlined text-lg">share</span>
-            </button>
-          </div>
-        </header>
+          <h1 className="text-5xl md:text-8xl font-black italic tracking-tighter uppercase leading-none">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ec5b13] via-orange-400 to-yellow-300 drop-shadow-[0_0_30px_rgba(236,91,19,0.3)] italic">THE RESULTS</span>
+          </h1>
+          <p className="text-slate-400 font-bold max-w-xs md:max-w-md mx-auto text-sm md:text-base">{displayData.rounds} ROUNDS OF BRAIN SYNC. HOW DID YOU DO?</p>
+        </div>
 
-        <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 max-w-4xl mx-auto w-full">
-          {/* Victory Header */}
-          <div className="text-center mb-10 animate-entrance">
-            <div className="inline-block px-4 py-1.5 rounded-full bg-[#ec5b13]/20 text-[#ec5b13] font-black text-[10px] tracking-widest uppercase mb-4 border border-[#ec5b13]/30">
-              {chemistry.label}
-            </div>
-            <h1 className="text-5xl md:text-8xl font-black italic tracking-tighter text-white drop-shadow-[0_0_30px_rgba(236,91,19,0.4)] mb-2 uppercase">
-              MATCH FOUND!
-            </h1>
-            <div className="h-1.5 w-32 bg-[#ec5b13] mx-auto rounded-full mb-8 shadow-[0_0_15px_rgba(236,91,19,0.5)]"></div>
+        {/* Sync Percentage Card */}
+        <div className="relative mb-16 md:mb-20 animate-scale-in">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#ec5b13]/20 via-transparent to-transparent rounded-[2rem] md:rounded-[3rem] blur-xl opacity-50"></div>
+          <div className="bg-white/[0.02] backdrop-blur-3xl p-8 md:p-16 text-center border border-white/10 rounded-[2.5rem] md:rounded-[3.5rem] shadow-2xl relative overflow-hidden">
+            <div className="absolute -right-20 -top-20 w-40 h-40 md:w-64 md:h-64 border-[20px] md:border-[40px] border-white/5 rounded-full"></div>
             
-            <p className="text-3xl md:text-5xl font-black text-emerald-400 bg-emerald-400/10 px-10 py-5 rounded-[2rem] border border-emerald-400/20 inline-flex items-center gap-4 animate-bounce-soft">
-              Word: <span className="text-white tracking-[0.2em] uppercase underline decoration-[#ec5b13] underline-offset-8">{matchWord}</span>
-            </p>
-          </div>
-
-          {/* Stats Bar */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl mb-10 animate-entrance stagger-2">
-            <div className="bg-[#ec5b13] p-10 rounded-[3rem] shadow-[0_20px_50px_-10px_rgba(236,91,19,0.3)] flex flex-col items-center justify-center text-center relative overflow-hidden group hover:scale-[1.02] transition-transform w-full">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl rounded-full -mr-10 -mt-10"></div>
-              <p className="text-white/70 uppercase tracking-[0.3em] text-[10px] font-black mb-2">Total Sync Score</p>
-              <div className="text-8xl md:text-9xl font-black text-white drop-shadow-2xl">{chemistry.score}%</div>
-              <p className="mt-4 text-white font-black italic text-lg tracking-tight uppercase">"{chemistry.label}"</p>
-            </div>
-            
-            <div className="bg-white/[0.03] backdrop-blur-xl p-8 rounded-[3rem] border border-white/10 relative overflow-hidden group hover:bg-white/[0.05] transition-all cursor-help w-full">
-              <div className="relative z-10">
-                <p className="text-slate-500 uppercase tracking-widest text-[10px] font-black mb-4 flex items-center gap-2">
-                   <span className="material-symbols-outlined text-sm">analytics</span>
-                   Chemistry Breakdown
-                </p>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center group/item">
-                    <span className="text-slate-400 font-bold text-xs uppercase tracking-tighter group-hover/item:text-slate-200 transition-colors">Sync Speed</span>
-                    <div className="flex items-center gap-3">
-                       <span className="text-white font-black">{chemistry.speedScore}%</span>
-                       <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500" style={{ width: `${chemistry.speedScore}%` }}></div>
-                       </div>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center group/item">
-                    <span className="text-slate-400 font-bold text-xs uppercase tracking-tighter group-hover/item:text-slate-200 transition-colors">Semantic Flow</span>
-                    <div className="flex items-center gap-3">
-                       <span className="text-white font-black">{Math.round(Number(chemistry.similarityScore || 0))}%</span>
-                       <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500" style={{ width: `${chemistry.similarityScore}%` }}></div>
-                       </div>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center group/item">
-                    <span className="text-slate-400 font-bold text-xs uppercase tracking-tighter group-hover/item:text-slate-200 transition-colors">Group Agreement</span>
-                    <div className="flex items-center gap-3">
-                       <span className="text-white font-black">{Math.round(Number(chemistry.agreementScore || 0))}%</span>
-                       <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full bg-amber-500" style={{ width: `${chemistry.agreementScore}%` }}></div>
-                       </div>
-                    </div>
-                  </div>
-                </div>
+            <div className="relative">
+              <div className="text-[7rem] md:text-[14rem] font-black text-white leading-none tracking-tighter flex items-center justify-center gap-1">
+                 {chemistry.score}<span className="text-2xl md:text-6xl text-[#ec5b13] mt-4 md:mt-8">%</span>
               </div>
+              <h2 className="text-xl md:text-4xl font-black text-[#ec5b13] uppercase italic tracking-widest mt-2 md:mt-4">
+                 {chemistry.label}
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 pt-10 md:pt-12 border-t border-white/10 mt-8 md:mt-10">
+              <StatItem label="Speed" value={chemistry.speedScore} icon="bolt" color="#ec5b13" />
+              <StatItem label="Similarity" value={Math.round(chemistry.similarityScore)} icon="auto_awesome" color="#8b5cf6" />
+              <StatItem label="Trend" value={Math.round(chemistry.trendScore * 3.33)} icon="trending_up" color="#10b981" />
+              <StatItem label="Agreement" value={Math.round(chemistry.agreementScore)} icon="handshake" color="#fbbf24" />
             </div>
           </div>
+        </div>
 
-          {/* Detailed Stats & Individual Chemistry */}
-          <div className="w-full max-w-2xl mb-12 flex flex-col gap-8 animate-entrance stagger-3">
-            <div className="bg-white/[0.02] backdrop-blur-sm border border-white/5 rounded-[2.5rem] p-6 md:p-10">
-              <div className="flex items-center gap-3 mb-8">
-                <span className="material-symbols-outlined text-[#ec5b13]">diversity_3</span>
-                <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Team Individual Chemistry</h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {(() => {
-                   const pairs: { p1: any, p2: any, score: number }[] = [];
-                   for (let i = 0; i < room.players.length; i++) {
-                     for (let j = i + 1; j < room.players.length; j++) {
-                        const p1 = room.players[i];
-                        const p2 = room.players[j];
-                        
-                        let totalSim = 0;
-                        const roundEntries = Object.values(room.roundHistory);
-                        roundEntries.forEach(guesses => {
-                           if (guesses[p1.id] && guesses[p2.id]) {
-                             totalSim += getEnhancedSimilarity(guesses[p1.id], guesses[p2.id]);
-                           }
-                        });
-                        const avgSim = totalSim / (roundEntries.length || 1);
-                        pairs.push({ p1, p2, score: Math.min(100, Math.round(avgSim * 100)) });
-                     }
-                   }
-                   
-                   return pairs.sort((a, b) => b.score - a.score).map((pair, idx) => (
-                     <div key={`${pair.p1.id}-${pair.p2.id}`} className="bg-white/5 border border-white/5 p-5 rounded-2xl flex items-center justify-between group hover:border-[#ec5b13]/20 transition-all">
-                        <div className="flex items-center gap-3">
-                           <div className="flex -space-x-3">
-                              <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-black text-slate-400 text-sm border border-white/10">{pair.p1.name.charAt(0)}</div>
-                              <div className="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center font-black text-slate-300 text-sm border border-white/10 shadow-xl">{pair.p2.name.charAt(0)}</div>
-                           </div>
-                           <div>
-                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{pair.p1.name} & {pair.p2.name}</p>
-                              <p className="text-xs font-black text-white italic">Rank #{idx + 1} Best Match</p>
-                           </div>
-                        </div>
-                        <div className="text-right">
-                           <div className={`text-xl font-black ${pair.score >= 80 ? 'text-emerald-400' : 'text-[#ec5b13]'}`}>{pair.score}%</div>
-                           <div className="w-16 h-1 bg-white/10 rounded-full mt-1 overflow-hidden">
-                              <div className={`h-full ${pair.score >= 80 ? 'bg-emerald-400' : 'bg-[#ec5b13]'}`} style={{ width: `${pair.score}%` }}></div>
-                           </div>
-                        </div>
-                     </div>
-                   ));
-                })()}
-              </div>
-            </div>
-
-            {/* Quick Actions/Ideas Section */}
-            <div className="bg-gradient-to-br from-[#ec5b13]/10 to-indigo-900/20 backdrop-blur-3xl border border-[#ec5b13]/20 rounded-[2.5rem] p-8 md:p-10 relative overflow-hidden group">
-               <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#ec5b13] opacity-20 blur-[60px] rounded-full group-hover:scale-125 transition-transform duration-700"></div>
-               <div className="relative z-10">
-                  <h3 className="text-xl font-black text-white italic mb-6">WHAT'S NEXT, SYNCERS?</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                     <div className="bg-black/20 p-4 rounded-2xl border border-white/5 hover:translate-y-[-5px] transition-all cursor-pointer">
-                        <span className="material-symbols-outlined text-[#ec5b13] mb-2">trending_up</span>
-                        <p className="text-[10px] font-black text-white uppercase mb-1">STREAK MODE</p>
-                        <p className="text-[9px] text-slate-400 leading-tight">Can you match 3 games in a row without failing? Unlock 'Legend' status.</p>
-                     </div>
-                     <div className="bg-black/20 p-4 rounded-2xl border border-white/5 hover:translate-y-[-5px] transition-all cursor-pointer">
-                        <span className="material-symbols-outlined text-indigo-400 mb-2">emoji_events</span>
-                        <p className="text-[10px] font-black text-white uppercase mb-1">GLOBAL RANK</p>
-                        <p className="text-[9px] text-slate-400 leading-tight">Your top score is {chemistry.score}%. You're in the top 12% of players today!</p>
-                     </div>
-                     <div className="bg-black/20 p-4 rounded-2xl border border-white/5 hover:translate-y-[-5px] transition-all cursor-pointer" onClick={() => { SoundEffects.playClick(); navigator.clipboard.writeText(window.location.href); alert("Link copied! Challenge your friends."); }}>
-                        <span className="material-symbols-outlined text-emerald-400 mb-2">share</span>
-                        <p className="text-[10px] font-black text-white uppercase mb-1">CHALLENGE</p>
-                        <p className="text-[9px] text-slate-400 leading-tight">Share this result on X or WhatsApp and tag your 'Mind Twin'.</p>
-                     </div>
-                  </div>
-               </div>
-            </div>
-          </div>
-
-          {/* Round History Journey */}
-          <div className="w-full max-w-2xl mt-4 space-y-6">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 rounded-xl bg- indigo-500/10 text-indigo-400 flex items-center justify-center">
-                <span className="material-symbols-outlined">history</span>
-              </div>
-              <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Round History Journey</h3>
-            </div>
-
-            <div className="flex flex-col gap-6">
-              {Object.entries(room.roundHistory || {}).sort(([a], [b]) => Number(b) - Number(a)).map(([roundNum, guesses]) => {
-                 const words = Object.values(guesses);
-                 const isRoundMatch = words.length > 0 && words.every(w => w === words[0]);
-                 
-                 return (
-                   <div key={roundNum} className="bg-white/[0.02] backdrop-blur-2xl border border-white/10 rounded-[2rem] p-6 md:p-8 animate-entrance relative overflow-hidden group">
-                     {/* Glassy Overlay decoration */}
-                     <div className="absolute inset-0 bg-white/[0.01] group-hover:bg-white/[0.03] transition-all"></div>
-                     
-                     <div className="relative z-10">
-                        <div className="flex justify-between items-center mb-6 px-1">
-                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Round {roundNum.padStart(2, '0')}</span>
-                          <div className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-2 ${isRoundMatch ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
-                            <span className="material-symbols-outlined text-xs">{isRoundMatch ? 'check_circle' : 'cancel'}</span>
-                            {isRoundMatch ? 'MATCHED' : 'DIVERGED'}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col md:flex-row items-center gap-4 md:gap-8">
-                           {room.players.map((p, idx) => (
-                             <div key={p.id} className="flex-1 w-full flex items-center gap-4">
-                               <div className="flex-1 bg-white/5 border border-white/5 p-4 md:p-6 rounded-2xl text-center relative overflow-hidden">
-                                 <p className="text-[8px] font-black text-slate-500 uppercase mb-2 tracking-widest">{p.id === sessionId ? 'YOU' : p.name}</p>
-                                 <p className={`text-xl md:text-2xl font-black uppercase tracking-wider ${isRoundMatch ? 'text-white' : 'text-slate-300'}`}>
-                                   {guesses[p.id] || "—"}
-                                 </p>
-                               </div>
-                               {idx < room.players.length - 1 && (
-                                 <div className="hidden md:flex flex-col items-center justify-center">
-                                   <span className={`material-symbols-outlined text-3xl ${isRoundMatch ? 'text-[#ec5b13] animate-pulse-soft' : 'text-slate-800'}`}>
-                                     {isRoundMatch ? 'sync' : 'sync_disabled'}
-                                   </span>
-                                 </div>
-                               )}
-                             </div>
-                           ))}
-                        </div>
-                     </div>
+        {/* Peer Breakdown (Individual Sync Section) */}
+        {pairwise.length > 0 && (
+          <div className="mb-16 md:mb-20 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+             <h3 className="text-xl md:text-2xl font-black uppercase italic mb-8 flex items-center gap-3">
+                <span className="material-symbols-outlined text-purple-500">cell_tower</span>
+                Network Chemistry
+             </h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pairwise.map((pair, idx) => (
+                   <div key={idx} className="bg-white/[0.03] border border-white/10 rounded-[2rem] p-6 hover:bg-white/[0.06] transition-all flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                         <div className="flex -space-x-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-black ring-2 ring-[#0a0f1d]">{pair.p1.charAt(0)}</div>
+                            <div className="w-10 h-10 rounded-xl bg-slate-700 border border-white/10 flex items-center justify-center text-xs font-black ring-2 ring-[#0a0f1d]">{pair.p2.charAt(0)}</div>
+                         </div>
+                         <div>
+                            <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest">{pair.label}</p>
+                            <p className="font-bold text-sm text-slate-200">{pair.p1} + {pair.p2}</p>
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <p className="text-2xl font-black italic">{pair.score}%</p>
+                         <div className="w-12 h-1 bg-white/5 rounded-full mt-1 overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-purple-500 to-blue-500" style={{ width: `${pair.score}%` }}></div>
+                         </div>
+                      </div>
                    </div>
-                 );
-              })}
-            </div>
+                ))}
+             </div>
           </div>
+        )}
 
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-5 w-full max-w-md animate-entrance stagger-4 mb-20">
-            {room.hostId === sessionId ? (
-              <button onClick={handlePlayAgain} className="flex-1 bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white font-black text-lg py-5 px-8 rounded-2xl shadow-xl shadow-[#ec5b13]/20 transition-all active:scale-95 uppercase tracking-wide flex items-center justify-center gap-3">
-                <span className="material-symbols-outlined font-black">replay</span>
-                Play Again
+        {/* Twins Duo Highlight */}
+        {bestPair.score > 0.5 && (
+          <div className="mb-16 md:mb-20 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+             <h3 className="text-xl md:text-2xl font-black uppercase italic mb-8 flex items-center justify-center gap-3 shrink-0">
+                <span className="material-symbols-outlined text-yellow-400">auto_awesome</span>
+                THE TWINS DUO
+             </h3>
+             
+             <div className="bg-white/[0.02] border border-yellow-400/20 rounded-[2.5rem] p-8 md:p-10 bg-gradient-to-br from-yellow-400/5 via-transparent to-transparent relative group max-w-2xl mx-auto">
+                <div className="flex flex-row items-center justify-center gap-6 md:gap-10">
+                   <div className="text-center">
+                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-800 border-2 border-yellow-400/50 flex items-center justify-center text-2xl md:text-4xl font-black text-white shadow-[0_0_20px_rgba(250,204,21,0.2)]">
+                         {bestPair.p1.charAt(0)}
+                      </div>
+                      <p className="mt-3 md:mt-4 font-black uppercase text-[10px] md:text-sm tracking-widest text-slate-300">{bestPair.p1}</p>
+                   </div>
+                   
+                   <div className="flex flex-col items-center">
+                      <div className="bg-yellow-400 text-[#0a0f1d] px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-tighter mb-3">
+                         {Math.round(bestPair.score * 100)}% SYNC
+                      </div>
+                      <span className="material-symbols-outlined text-yellow-500 text-3xl md:text-5xl animate-pulse">handshake</span>
+                   </div>
+
+                   <div className="text-center">
+                      <div className="w-16 h-16 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-slate-800 border-2 border-yellow-400/50 flex items-center justify-center text-2xl md:text-4xl font-black text-white shadow-[0_0_20px_rgba(250,204,21,0.2)]">
+                         {bestPair.p2.charAt(0)}
+                      </div>
+                      <p className="mt-3 md:mt-4 font-black uppercase text-[10px] md:text-sm tracking-widest text-slate-300">{bestPair.p2}</p>
+                   </div>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Wavelength Hall of Fame */}
+        <div className="mb-16 md:mb-20 animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
+           <h3 className="text-xl md:text-2xl font-black uppercase italic mb-8 flex items-center justify-center gap-3">
+              <span className="material-symbols-outlined text-yellow-500">military_tech</span>
+              MIND SYNC RANKINGS
+           </h3>
+           <div className="flex flex-col gap-4 max-w-2xl mx-auto">
+              {sortedByCoins.map((p, idx) => (
+                <div key={p.id} className={`bg-white/[0.02] border border-white/5 p-5 md:p-8 rounded-[1.5rem] md:rounded-[2rem] flex items-center justify-between group relative overflow-hidden ${idx === 0 ? 'bg-gradient-to-r from-yellow-400/5 to-transparent border-yellow-400/20 shadow-[0_0_30px_rgba(250,204,21,0.05)]' : ''}`}>
+                   <div className="flex items-center gap-4 md:gap-6">
+                      <span className={`text-2xl font-black italic opacity-20 ${idx === 0 ? 'text-yellow-400' : 'text-slate-600'}`}>{idx + 1}</span>
+                      <div className={`w-12 h-12 md:w-16 md:h-16 rounded-xl flex items-center justify-center text-2xl font-black ${idx === 0 ? 'bg-yellow-400 text-slate-900 shadow-xl' : 'bg-white/5 text-slate-300'}`}>
+                         {p.name.charAt(0)}
+                      </div>
+                      <div>
+                         <p className="font-black uppercase tracking-tight text-lg md:text-2xl">{p.name}</p>
+                         <p className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">{idx === 0 ? 'GRAND MASTER' : idx === 1 ? 'ELITE SYNCER' : 'PLAYER'}</p>
+                      </div>
+                   </div>
+                   <div className="text-right flex flex-col items-end">
+                      <div className="flex items-center gap-1 md:gap-2">
+                         <span className="text-2xl md:text-4xl font-black text-white">{p.coins || 0}</span>
+                         <span className="material-symbols-outlined text-yellow-500 text-2xl font-black">monetization_on</span>
+                      </div>
+                      <p className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-yellow-500/50 mt-0.5">SCORE</p>
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Global Control Bar (Fixed Bottom on Mobile) */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#0a0f1d] via-[#0a0f1d]/95 to-transparent z-40 block md:hidden">
+           <div className="flex gap-4">
+              <button onClick={handlePlayAgain} className="flex-1 bg-white text-[#0a0f1d] py-5 rounded-2xl font-black text-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-2xl shadow-white/5">
+                 <span className="material-symbols-outlined">refresh</span> REPLAY
               </button>
-            ) : (
-              <div className="flex-1 bg-white/5 p-5 rounded-2xl border border-white/10 text-white/40 text-center font-black animate-pulse uppercase tracking-widest text-sm">
-                 Waiting for Leader...
-              </div>
-            )}
-            <button onClick={handleQuitGame} className="flex-1 bg-white/5 hover:bg-white/10 text-white font-bold text-lg py-5 px-8 rounded-2xl border border-white/10 transition-all active:scale-95 uppercase tracking-wide flex items-center justify-center gap-3">
-              <span className="material-symbols-outlined font-black">power_settings_new</span>
-              Exit Game
-            </button>
-          </div>
-        </main>
+              <button onClick={handleQuitGame} className="w-20 bg-white/10 rounded-2xl backdrop-blur-xl border border-white/10 flex items-center justify-center text-white active:scale-95 transition-transform">
+                 <span className="material-symbols-outlined">exit_to_app</span>
+              </button>
+           </div>
+        </div>
 
-        <footer className="py-10 text-center text-slate-700 text-[10px] font-black uppercase tracking-[0.5em] opacity-40">
-          Sync Engine 4.0 // MindSync Powered
-        </footer>
+        {/* Desktop Controls */}
+        <div className="hidden md:flex gap-6 mb-20 max-w-2xl mx-auto">
+           <button onClick={handlePlayAgain} className="flex-[2] bg-white text-[#0a0f1d] py-7 rounded-[2.5rem] font-black text-3xl hover:bg-[#ec5b13] hover:text-white transition-all transform hover:scale-[1.02] active:scale-95 shadow-2xl flex items-center justify-center gap-4">
+              <span className="material-symbols-outlined text-4xl">celebration</span> PLAY AGAIN
+           </button>
+           <button onClick={handleQuitGame} className="flex-1 px-12 py-7 rounded-[2.5rem] bg-white/5 border border-white/10 font-black text-xl hover:bg-white/10 transition-all flex items-center justify-center gap-3">
+              EXIT
+           </button>
+        </div>
+
+        {/* History Log */}
+        <div className="animate-fade-in-up pb-10" style={{ animationDelay: '0.8s' }}>
+           <h3 className="text-xl md:text-2xl font-black italic uppercase mb-8 flex items-center gap-3">
+              <span className="material-symbols-outlined">history</span> Full Log
+           </h3>
+           <div className="space-y-4 md:space-y-6">
+              {Object.entries(displayData.history).sort(([a],[b]) => parseInt(b)-parseInt(a)).map(([r, guesses]) => {
+                const isMatch = checkAllMatch(guesses);
+                return (
+                  <div key={r} className="bg-white/[0.02] border border-white/10 rounded-[1.5rem] md:rounded-[2.5rem] overflow-hidden">
+                    <div className="bg-white/5 px-6 md:px-10 py-4 md:py-5 border-b border-white/5 flex items-center justify-between">
+                       <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Round {r}</span>
+                       {isMatch && <span className="text-[9px] font-black uppercase text-emerald-400 border border-emerald-400/20 px-3 py-1 rounded-full bg-emerald-400/10">Perfect Match</span>}
+                    </div>
+                    <div className="p-6 md:p-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
+                       {displayData.players.map(p => (
+                         <div key={p.id} className="bg-white/[0.03] border border-white/5 p-4 rounded-2xl flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-500">
+                               {p.name.charAt(0)}
+                            </div>
+                            <div className="overflow-hidden">
+                               <p className="text-[9px] font-black text-slate-500 uppercase truncate mb-0.5">{p.name}</p>
+                               <p className={`text-sm md:text-base font-black uppercase tracking-tight truncate ${isMatch ? 'text-emerald-400' : 'text-slate-200'}`}>{guesses[p.id] || '-'}</p>
+                            </div>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                );
+              })}
+           </div>
+        </div>
       </div>
+    </main>
+  );
+}
+
+function StatItem({ label, value, icon, color }: { label: string, value: number, icon: string, color: string }) {
+  return (
+    <div className="space-y-3 group">
+      <div className="flex items-center justify-center gap-2 text-slate-500 group-hover:text-slate-300 transition-colors">
+        <span className="material-symbols-outlined text-[20px]" style={{ color }}>{icon}</span>
+        <span className="text-[11px] font-black uppercase tracking-[0.2em]">{label}</span>
+      </div>
+      <div className="text-4xl md:text-5xl font-black text-white">{value}%</div>
     </div>
   );
 }

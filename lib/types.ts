@@ -2,6 +2,15 @@ export interface Player {
   id: string;
   name: string;
   score: number;
+  coins: number;
+}
+
+export interface MatchResults {
+  chemistryScore: number;
+  totalRounds: number;
+  playerCoins: Record<string, number>;
+  roundHistory: Record<number, Record<string, string>>;
+  timestamp: number;
 }
 
 export interface Room {
@@ -15,7 +24,14 @@ export interface Room {
   preventRepeated: boolean;
   usedWords: string[];
   currentGuesses: Record<string, string>; // { playerId: word }
+  currentGuessTimes: Record<string, number>; // { playerId: timestamp }
   roundHistory: Record<number, Record<string, string>>; // { roundNumber: { playerId: word } }
   currentPrompt: string;
+  roundStartedAt?: number;
   createdAt: number;
+  lastRoundSyncInfo?: { 
+    type: 'exact' | 'close' | 'simultaneous';
+    playerIds: string[];
+  };
+  lastMatchResults?: MatchResults;
 }

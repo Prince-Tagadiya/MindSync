@@ -31,12 +31,54 @@ export default function GamePage() {
   const [timeLeft, setTimeLeft] = useState(ROUND_TIME);
   const [countdown, setCountdown] = useState(COUNTDOWN_TIME);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSyncAlert, setShowSyncAlert] = useState<{ type: string, names: string[] } | null>(null);
+  const [coinAlert, setCoinAlert] = useState<string | null>(null);
+  const [toastDesc, setToastDesc] = useState<string>("");
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const hasSpokenRef = useRef(false);
 
   const isHost = room?.hostId === sessionId;
   const hasSubmitted = room?.currentGuesses[sessionId] !== undefined;
+  // Trigger Coin Sound & Toast
+  const prevCoinsRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+     if (!room) return;
+     room.players.forEach(p => {
+        const prev = prevCoinsRef.current[p.id] || 0;
+        if (p.coins > prev) {
+           if (p.id === sessionId) {
+              const diff = p.coins - prev;
+              let description = "Pure Mind Luck!";
+              if (room.lastRoundSyncInfo) {
+                if (room.lastRoundSyncInfo.type === 'simultaneous' && diff >= 50) description = "ULTRA SYNC BONUS";
+                else if (room.lastRoundSyncInfo.type === 'exact' && diff >= 20) description = "MIND TWINS BONUS";
+              }
+              
+              setCoinAlert(`${diff} COINS!`);
+              setToastDesc(description);
+              SoundEffects.playCoin();
+              
+              const announce = new SpeechSynthesisUtterance(`${description}: Received ${diff} coins`);
+              announce.volume = 0.5;
+              announce.rate = 1.2;
+              window.speechSynthesis.speak(announce);
+              
+              setTimeout(() => { setCoinAlert(null); setToastDesc(""); }, 4000);
+           }
+        }
+        prevCoinsRef.current[p.id] = p.coins;
+     });
+  }, [room?.players]);
+
+  // Sync Animation Trigger
+  useEffect(() => {
+     if (room?.status === "reveal" && room.lastRoundSyncInfo) {
+        const names = room.lastRoundSyncInfo.playerIds.map(id => room.players.find(p => p.id === id)?.name || "Unknown");
+        setShowSyncAlert({ type: room.lastRoundSyncInfo.type, names });
+        setTimeout(() => setShowSyncAlert(null), 5000);
+     }
+  }, [room?.status, room?.lastRoundSyncInfo]);
 
   useEffect(() => {
     if (!roomId || !sessionId) return;
@@ -59,6 +101,14 @@ export default function GamePage() {
     });
     return () => unsub();
   }, [roomId, sessionId, router]);
+
+  // Clear guess on new round
+  useEffect(() => {
+    if (room?.status === "playing") {
+      setGuess("");
+      setGuessError("");
+    }
+  }, [room?.round, room?.status]);
 
   const playersSubmitted = room?.players.filter((p) => room.currentGuesses[p.id]).length || 0;
   const isMatch = room?.status === "reveal" ? checkAllMatch(room.currentGuesses) : false;
@@ -134,34 +184,59 @@ export default function GamePage() {
     };
   }, [room?.status, isHost, roomId]);
 
+  const lastSpokenRoundRef = useRef<number>(-1);
+
   // Text to speech effect on reveal
   useEffect(() => {
-    if (room?.status === "reveal" && (countdown === 0 || isMatch) && room.currentGuesses && !hasSpokenRef.current) {
-      hasSpokenRef.current = true;
+    const currentRound = room?.round || 0;
+    const isRevealState = room?.status === "reveal" && (countdown === 0 || isMatch);
+
+    if (isRevealState && room.currentGuesses && lastSpokenRoundRef.current !== currentRound) {
+      lastSpokenRoundRef.current = currentRound;
+      
+      // Attempt the 'Burst' trick for more simultaneous playback
       window.speechSynthesis.cancel();
+      window.speechSynthesis.pause(); // Pause to queue them up
       
       const voices = window.speechSynthesis.getVoices();
-      SoundEffects.playShout();
       if (isMatch) {
-        SoundEffects.playSuccess();
+         SoundEffects.playSuccess();
+      } else {
+         SoundEffects.playReveal(); 
       }
       
       room.players.forEach((p, index) => {
         const word = room.currentGuesses[p.id];
         if (word && word !== "-") {
           const utterance = new SpeechSynthesisUtterance(word);
-          utterance.pitch = 0.8 + (index * 0.15); 
-          utterance.rate = 1.1; // Slightly faster for more 'shout-like' energy
-          utterance.voice = voices[index % voices.length] || voices[0];
-          window.speechSynthesis.speak(utterance);
+          utterance.pitch = 0.9 + (index * 0.1); 
+          utterance.rate = 1.0; 
+          utterance.volume = 0.8; // Slightly lower volume to avoid "shouting"
+          utterance.voice = voices[index % voices.length] || voices[voiceIdxRef.current++ % voices.length];
+          // Micro-delay between voices for overlapping effect
+          setTimeout(() => window.speechSynthesis.speak(utterance), (index * 20));
         }
       });
+      
+      // Release the burst!
+      setTimeout(() => window.speechSynthesis.resume(), 100);
+
+      // Auto-finish game after 6s if it's a match
+      if (isMatch && isHost) {
+        setTimeout(async () => {
+          await finishGame(roomId, room.players);
+        }, 6000);
+      }
     }
-    
+  }, [room?.status, countdown, isMatch, room?.round]);
+
+  const voiceIdxRef = useRef(0);
+
+  useEffect(() => {
     if (room?.status === "playing") {
       hasSpokenRef.current = false;
     }
-  }, [room?.status, countdown, isMatch, room?.players?.length]);
+  }, [room?.status]);
 
   const setLocalCountdown = () => {
     if (countdownRef.current) return;
@@ -222,13 +297,14 @@ export default function GamePage() {
 
   const handleNextRound = async () => {
     SoundEffects.playClick();
-    if (room) {
-      if (room.round >= 5 || isMatch) {
-         // Re-calculate match for scoring if needed
-         await finishGame(roomId, room.players);
-      } else {
-         await nextRound(roomId, sessionId);
-      }
+    if (!room) return;
+    
+    // If it's a match or host manually finished, they might use the other button
+    // But if we're here, we just want next round
+    if (isMatch) {
+       await finishGame(roomId, room.players);
+    } else {
+       await nextRound(roomId, sessionId);
     }
     setGuess("");
     setGuessError("");
@@ -249,6 +325,81 @@ export default function GamePage() {
       <div className="absolute bg-[#ec5b13] w-96 h-96 rounded-full top-20 -left-20 animate-float opacity-30 blur-[80px] z-0 pointer-events-none"></div>
       <div className="absolute bg-blue-600 w-[600px] h-[600px] rounded-full bottom-20 -right-20 animate-float opacity-30 blur-[80px] z-0 pointer-events-none" style={{ animationDelay: "-2s" }}></div>
       <div className="absolute bg-purple-600 w-80 h-80 rounded-full top-1/2 left-1/4 animate-slow-bounce opacity-30 blur-[80px] z-0 pointer-events-none" style={{ animationDelay: "-1s" }}></div>
+
+      {/* Sync Overlays (High-Level) */}
+      {showSyncAlert && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-3xl overflow-hidden">
+             <div className="absolute inset-0 animate-sync-flash z-10"></div>
+             <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300%] h-[300%] bg-gradient-to-r from-transparent via-white/10 to-transparent animate-ray-spin opacity-50"></div>
+             </div>
+
+             <div className="relative w-full max-w-4xl px-6 text-center z-20">
+                {showSyncAlert.type === 'simultaneous' ? (
+                   <div className="space-y-8 animate-float-ultra">
+                      <div className="inline-block px-6 md:px-8 py-2 md:py-3 rounded-full bg-yellow-400 text-slate-900 font-black text-[9px] md:text-[10px] tracking-[0.3em] md:tracking-[0.4em] uppercase shadow-[0_0_50px_rgba(250,204,21,0.6)] border-b-4 border-yellow-700">
+                         GODLIKE! SAME SECOND SYNC
+                      </div>
+                      <h2 className="text-6xl md:text-[12rem] font-black italic tracking-tighter text-white uppercase leading-none drop-shadow-[0_0_50px_rgba(255,255,255,0.4)]">
+                         ULTRA <span className="text-yellow-400">SYNC</span>
+                      </h2>
+                      <div className="flex items-center justify-center gap-6 md:gap-12 mt-10 md:mt-16 scale-100 md:scale-125">
+                         {showSyncAlert.names.map((name, i) => (
+                            <div key={i} className="flex flex-col items-center animate-slide-in-up" style={{ animationDelay: `${i*0.2}s` }}>
+                               <div className="w-20 h-20 md:w-32 md:h-32 rounded-full border-4 border-yellow-400 bg-slate-900 flex items-center justify-center text-3xl md:text-4xl font-black text-white shadow-[0_0_30px_rgba(250,204,21,0.4)]">
+                                  {name.charAt(0)}
+                               </div>
+                               <p className="mt-3 md:mt-4 font-black text-white text-base md:text-xl uppercase tracking-widest">{name}</p>
+                            </div>
+                         ))}
+                      </div>
+                      <p className="text-yellow-400 font-black text-2xl md:text-4xl animate-pulse mt-12 md:mt-16">+50 BONUS COINS!</p>
+                   </div>
+                ) : (
+                   <div className="space-y-6 md:space-y-8 animate-float-ultra">
+                      <div className="inline-block px-6 md:px-8 py-2 md:py-3 rounded-full bg-[#ec5b13] text-white font-black text-[9px] md:text-[10px] tracking-[0.3em] md:tracking-[0.4em] uppercase shadow-[0_0_40px_rgba(236,91,19,0.5)] border-b-4 border-[#8e370c]">
+                         TELEPATHIC CONNECT
+                      </div>
+                      <h2 className="text-6xl md:text-[10rem] font-black italic tracking-tighter text-white uppercase leading-tight">
+                         MIND <span className="text-[#ec5b13]">TWINS</span>
+                      </h2>
+                      <div className="flex items-center justify-center gap-4 md:gap-8 mt-10 md:mt-12 scale-100 md:scale-110">
+                         <div className="flex flex-col items-center animate-slide-in-right">
+                            <div className="w-16 h-16 md:w-32 md:h-32 rounded-2xl md:rounded-3xl bg-slate-900 border-2 border-[#ec5b13]/50 flex items-center justify-center text-2xl md:text-4xl font-black text-white shadow-[0_0_20px_rgba(236,91,19,0.3)]">
+                               {showSyncAlert.names[0].charAt(0)}
+                            </div>
+                            <p className="mt-2 md:mt-4 font-black text-slate-300 uppercase tracking-widest text-xs md:text-lg">{showSyncAlert.names[0]}</p>
+                         </div>
+                         <div className="flex flex-col items-center">
+                            <span className="material-symbols-outlined text-5xl md:text-9xl text-white animate-pulse drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">handshake</span>
+                            <div className="w-16 md:w-24 h-1 bg-gradient-to-r from-transparent via-[#ec5b13] to-transparent mt-2"></div>
+                         </div>
+                         <div className="flex flex-col items-center animate-slide-in-left">
+                            <div className="w-16 h-16 md:w-32 md:h-32 rounded-2xl md:rounded-3xl bg-slate-900 border-2 border-[#ec5b13]/50 flex items-center justify-center text-2xl md:text-4xl font-black text-white shadow-[0_0_20px_rgba(236,91,19,0.3)]">
+                               {showSyncAlert.names[1].charAt(0)}
+                            </div>
+                            <p className="mt-2 md:mt-4 font-black text-slate-300 uppercase tracking-widest text-xs md:text-lg">{showSyncAlert.names[1]}</p>
+                         </div>
+                      </div>
+                      <p className="text-[#ec5b13] font-black text-xl md:text-2xl animate-pulse mt-10 md:mt-12 text-center">+20 BONUS COINS!</p>
+                   </div>
+                )}
+             </div>
+          </div>
+      )}
+
+      {/* Coin Toast (High-Level) */}
+      {coinAlert && (
+           <div className="fixed top-24 right-8 z-[200] animate-slide-in-right">
+              <div className="bg-yellow-400 text-slate-900 px-8 py-4 rounded-[2rem] font-black flex items-center gap-4 shadow-2xl border-b-8 border-yellow-700 scale-110">
+                 <span className="material-symbols-outlined text-4xl animate-spin" style={{ animationDuration: '3s' }}>monetization_on</span>
+                 <div className="flex flex-col">
+                    <span className="text-3xl tracking-tighter leading-none">{coinAlert}</span>
+                    <span className="text-[10px] uppercase font-black tracking-widest mt-1 opacity-70">{toastDesc || "Pure Mind Luck!"}</span>
+                 </div>
+              </div>
+           </div>
+      )}
 
       {/* Top Header */}
       <header className="flex items-center justify-between border-b border-white/5 bg-[#0a0f1d]/60 backdrop-blur-2xl px-4 md:px-12 py-4 md:py-5 sticky top-0 z-50 w-full shrink-0">
@@ -385,7 +536,6 @@ export default function GamePage() {
                   <span className="material-symbols-outlined text-4xl">check_circle</span> Word Submitted!
                 </div>
                 
-                {/* Player Status Avatars */}
                 <div className="flex flex-col items-center gap-4 animate-fade-in-up stagger-2 mt-4">
                   <div className="flex gap-4 p-5 bg-white/5 backdrop-blur-md rounded-[2rem] border border-white/10 shadow-xl flex-wrap justify-center">
                     {room.players.map((p, index) => {
@@ -469,16 +619,31 @@ export default function GamePage() {
                 {/* Action Footer */}
                 {isHost && (
                   <div 
-                    className="pt-8 w-full flex justify-center animate-entrance" 
+                    className="pt-8 w-full flex flex-col md:flex-row items-center justify-center gap-4 animate-entrance" 
                     style={{ animationDelay: '0.6s', animationFillMode: 'both' }}
                   >
                     <button 
                       onClick={handleNextRound} 
-                      className={`${isMatch ? 'bg-yellow-400 hover:bg-yellow-300 text-slate-950 shadow-[0_0_30px_rgba(250,204,21,0.6)]' : 'bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white shadow-[0_0_30px_rgba(236,91,19,0.6)]'} font-black py-5 px-16 rounded-[2rem] text-2xl transition-all transform hover:scale-105 active:scale-95 flex items-center gap-3`}
+                      className={`${isMatch ? 'bg-yellow-400 hover:bg-yellow-300 text-slate-950 shadow-[0_0_30px_rgba(250,204,21,0.6)]' : 'bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white shadow-[0_0_30px_rgba(236,91,19,0.6)]'} font-black py-5 px-16 rounded-[2rem] text-2xl transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-3 w-full md:w-auto`}
                     >
-                      <span className="material-symbols-outlined font-bold">{isMatch || room.round >= 5 ? 'emoji_events' : 'forward'}</span>
-                      <span>{room.round >= 5 || isMatch ? "FINISH GAME" : "NEXT ROUND"}</span>
+                      <span className="material-symbols-outlined font-bold">{isMatch ? 'emoji_events' : 'forward'}</span>
+                      <span>{isMatch ? "FINISH GAME" : "NEXT ROUND"}</span>
                     </button>
+
+                    {!isMatch && (
+                      <button 
+                        onClick={async () => {
+                          SoundEffects.playClick();
+                          if (confirm("End this match and see final chemistry results now?")) {
+                            await finishGame(roomId, room.players);
+                          }
+                        }} 
+                        className="px-8 py-5 rounded-[2rem] font-black text-sm uppercase tracking-widest text-slate-500 hover:text-red-400 transition-all flex items-center gap-2 group border border-white/5 hover:border-red-400/20 bg-white/[0.02]"
+                      >
+                        <span className="material-symbols-outlined text-base group-hover:rotate-12 transition-transform">flag</span>
+                        Stop & Results
+                      </button>
+                    )}
                   </div>
                 )}
                 {!isHost && (
@@ -574,17 +739,26 @@ export default function GamePage() {
                           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest truncate max-w-[120px]">
                             {p.name} {isMe && <span className="text-[#ec5b13] ml-1">(You)</span>}
                           </p>
-                          {playerGuessed ? (
-                            <div className="flex items-center gap-1 text-emerald-400">
-                               <span className="material-symbols-outlined text-[14px]">verified</span>
-                               <span className="text-[9px] font-black uppercase tracking-tighter">Ready</span>
+                          
+                          <div className="flex items-center gap-2">
+                            {/* Coin Display */}
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-yellow-400/10 border border-yellow-400/20 shadow-inner">
+                              <span className="material-symbols-outlined text-yellow-500 text-[10px]">monetization_on</span>
+                              <span className="text-[9px] font-black text-yellow-500">{p.coins || 0}</span>
                             </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#ec5b13] animate-ping"></span>
-                              <span className="text-[9px] font-black text-[#ec5b13] uppercase">Thinking...</span>
-                            </div>
-                          )}
+
+                            {playerGuessed ? (
+                              <div className="flex items-center gap-1 text-emerald-400">
+                                <span className="material-symbols-outlined text-[14px]">verified</span>
+                                <span className="text-[9px] font-black uppercase tracking-tighter">Ready</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#ec5b13] animate-ping"></span>
+                                <span className="text-[9px] font-black text-[#ec5b13] uppercase">Thinking...</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         <div className="relative">

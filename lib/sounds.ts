@@ -2,27 +2,21 @@ export const SoundEffects = {
   playClick: () => playTone(600, "sine", 0.05),
   playSubmit: () => playTone(800, "sine", 0.1),
   playSuccess: () => {
-    playTone(400, "sine", 0.1);
-    setTimeout(() => playTone(600, "sine", 0.15), 100);
-    setTimeout(() => playTone(1000, "sine", 0.2), 200);
+    playTone(400, "sine", 0.15);
+    setTimeout(() => playTone(800, "sine", 0.2), 150);
   },
   playError: () => {
     playTone(300, "square", 0.15);
     setTimeout(() => playTone(250, "square", 0.2), 150);
   },
   playTick: () => playTone(800, "sine", 0.03, 0.1),
-  playShout: () => {
-    // Clustered 'HA!' or group shout with noise impact
-    for (let i = 0; i < 6; i++) {
-      const pitch = 120 + Math.random() * 300;
-      const delay = Math.random() * 0.04;
-      const dur = 0.15 + Math.random() * 0.1;
-      // Vocal cord simulation (saw/sq combination)
-      setTimeout(() => playTone(pitch, 'sawtooth', dur, 0.1), delay * 1000);
-      setTimeout(() => playTone(pitch * 1.6, 'square', dur, 0.05), delay * 1000);
-    }
-    // Percussive noise 'punch' to simulate the initial breath
-    playTone(100, 'square', 0.1, 0.2); 
+  playReveal: () => {
+    playTone(400, "sine", 0.1);
+    setTimeout(() => playTone(500, "sine", 0.1), 80);
+  },
+  playCoin: () => {
+    playTone(800, "sine", 0.1, 0.4);
+    setTimeout(() => playTone(1200, "sine", 0.1, 0.4), 60);
   },
 };
 

@@ -181,6 +181,25 @@ export default function LobbyPage() {
         </div>
       </div>
 
+      {/* Sync Bonus Guide */}
+      <div className="w-full bg-white/5 border border-white/10 backdrop-blur-2xl rounded-[2.5rem] p-6 md:p-8 shadow-2xl mb-8 animate-entrance stagger-3 overflow-hidden relative">
+        <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-[#ec5b13]/5 blur-[60px] rounded-full"></div>
+        
+        <h3 className="text-white text-xl font-black italic uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+          <span className="material-symbols-outlined text-[#ec5b13]">stars</span>
+          Sync Rewards
+        </h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+          <BonusCard title="ULTRA SYNC" reward="+50" condition="Match same sec" icon="bolt" color="text-yellow-400" bgColor="bg-yellow-400/10" />
+          <BonusCard title="HARMONY" reward="+25" condition="WHOLE room sync" icon="join_inner" color="text-emerald-400" bgColor="bg-emerald-400/10" />
+          <BonusCard title="MIND TWINS" reward="+20" condition="Exact word sync" icon="handshake" color="text-[#ec5b13]" bgColor="bg-[#ec5b13]/10" />
+          <BonusCard title="LATE SAVE" reward="+15" condition="Sync in final 5s" icon="history" color="text-orange-400" bgColor="bg-orange-400/10" />
+          <BonusCard title="HIGH SYNC" reward="+10" condition="Close spell match" icon="auto_fix_high" color="text-purple-400" bgColor="bg-purple-400/10" />
+          <BonusCard title="FIRST BLOOD" reward="+5" condition="1st to submit" icon="rocket_launch" color="text-blue-400" bgColor="bg-blue-400/10" />
+        </div>
+      </div>
+
       {/* Room Settings Modal (Host Only) */}
       {showSettingsModal && isHost && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up">
@@ -327,5 +346,20 @@ export default function LobbyPage() {
         </div>
       )}
     </main>
+  );
+}
+
+function BonusCard({ title, reward, condition, icon, color, bgColor }: any) {
+  return (
+    <div className={`p-4 rounded-2xl border border-white/5 ${bgColor} backdrop-blur-sm flex flex-col gap-2 transition-all hover:scale-[1.02]`}>
+      <div className="flex items-center justify-between">
+        <span className={`material-symbols-outlined ${color} text-2xl`}>{icon}</span>
+        <span className={`font-black text-lg ${color}`}>{reward}</span>
+      </div>
+      <div>
+        <p className="text-white font-bold text-xs uppercase tracking-wider">{title}</p>
+        <p className="text-white/40 text-[10px] font-medium leading-tight mt-1">{condition}</p>
+      </div>
+    </div>
   );
 }
