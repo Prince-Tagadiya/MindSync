@@ -19,7 +19,8 @@ export default function HomePage() {
   const [createMode, setCreateMode] = useState("normal");
   const [createTimer, setCreateTimer] = useState(30);
   const [createShowPrompt, setCreateShowPrompt] = useState(true);
-  const [createPreventRepeated, setCreatePreventRepeated] = useState(true); // Added state
+  const [createPreventRepeated, setCreatePreventRepeated] = useState(true);
+  const [createMaxRounds, setCreateMaxRounds] = useState(5);
 
   useEffect(() => {
     const saved = getPlayerName();
@@ -51,7 +52,8 @@ export default function HomePage() {
         hostName: trimmed,
         timePerRound: createTimer,
         showPrompt: createShowPrompt,
-        preventRepeated: createPreventRepeated, // Passed to createRoom
+        preventRepeated: createPreventRepeated,
+        maxRounds: createMaxRounds,
       });
       setSavedRoomId(roomId);
       SoundEffects.playSuccess();
@@ -351,6 +353,15 @@ export default function HomePage() {
                         <span className="text-xs font-bold text-[#ec5b13]">15s</span>
                         <input value={createTimer} onChange={e => { setCreateTimer(Number(e.target.value)); }} className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#ec5b13]" max="60" min="15" step="15" type="range" />
                         <span className="text-xs font-bold text-[#ec5b13]">60s</span>
+                      </div>
+                    </div>
+                    {/* Max Rounds Slider */}
+                    <div className="flex flex-col gap-2 mt-4">
+                      <span className="text-white/80 font-medium font-bold">Max Rounds: <span className="text-[#ec5b13]">{createMaxRounds}</span></span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-bold text-[#ec5b13]">5</span>
+                        <input value={createMaxRounds} onChange={e => { setCreateMaxRounds(Number(e.target.value)); }} className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#ec5b13]" max="100" min="5" step="5" type="range" />
+                        <span className="text-xs font-bold text-[#ec5b13]">100</span>
                       </div>
                     </div>
                   </div>

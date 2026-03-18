@@ -307,12 +307,12 @@ export default function GamePage() {
     SoundEffects.playClick();
     if (!room) return;
     
-    // If it's a match or host manually finished, they might use the other button
-    // But if we're here, we just want next round
-    if (isMatch) {
-       await finishGame(roomId, room.players);
+    // Check if we reached max rounds or achieved a perfect match
+    const isMaxRounds = room.round >= (room.totalRounds || 5);
+    if (isMaxRounds || isMatch) {
+      await finishGame(roomId, room.players);
     } else {
-       await nextRound(roomId, sessionId);
+      await nextRound(roomId, sessionId);
     }
     setGuess("");
     setGuessError("");
@@ -421,7 +421,7 @@ export default function GamePage() {
         <div className="flex items-center gap-2 sm:gap-4 md:gap-6 bg-white/5 px-3 py-1.5 md:px-5 md:py-2.5 rounded-[1.25rem] border border-white/10 shadow-sm overflow-hidden">
           <div className="flex items-center gap-1.5 md:gap-2">
             <span className="material-symbols-outlined text-[#ec5b13] text-[14px] md:text-sm font-bold">hourglass_top</span>
-            <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400">RND <span className="text-white">{room.round}</span>/5</span>
+            <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-slate-400">RND <span className="text-white">{room.round}</span>/{room.totalRounds || 5}</span>
           </div>
           <div className="w-px h-3 md:h-4 bg-white/10"></div>
           <div className="flex items-center gap-1.5 md:gap-2">

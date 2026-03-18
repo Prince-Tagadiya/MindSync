@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSessionId, clearSavedRoomId } from "@/lib/session";
-import { listenToRoom, leaveRoom, playAgain } from "@/lib/firestore";
+import { listenToRoom, leaveRoom, playAgain, respondToPlayAgain } from "@/lib/firestore";
 import { Room, Player } from "@/lib/types";
 import { calculateChemistry, getEnhancedSimilarity, getAvgSim, calculatePairwiseChemistry } from "@/lib/chemistry";
 import { SoundEffects } from "@/lib/sounds";
@@ -29,6 +29,15 @@ export default function ResultPage() {
       setRoom(data);
       if (data && data.status === "lobby") {
         router.push(`/lobby/${roomId}`);
+      }
+      
+      // If everyone accepted (host finalizes)
+      if (data && data.status === "finished") {
+        const accepters = Object.values(data.playAgainRequests || {}).filter(v => v === 'accept').length;
+        if (accepters >= data.players.length && data.hostId === sessionId) {
+           // Auto-restart if everyone accepted? No, host might want to wait. 
+           // But user said "user press play aain then show req to all".
+        }
       }
     });
     return () => unsub();
@@ -333,6 +342,26 @@ export default function ResultPage() {
      p2: room?.players.find(p => p.name === topPartner.p2) || { name: topPartner.p2 }
   } : null;
 
+  const handleRestart = async () => {
+    SoundEffects.playClick();
+    if (room?.hostId === sessionId) {
+       await playAgain(roomId);
+    }
+  };
+
+  const handleInitialRequest = async () => {
+    SoundEffects.playClick();
+    await respondToPlayAgain(roomId, sessionId, 'accept');
+  };
+
+  const requests = room?.playAgainRequests || {};
+  const hasVoted = !!requests[sessionId];
+  const totalVotes = Object.keys(requests).length;
+  const acceptedVotes = Object.values(requests).filter(v => v === 'accept').length;
+  const declinedVotes = Object.values(requests).filter(v => v === 'decline').length;
+  const showVoteModal = totalVotes > 0 && !hasVoted;
+  const isAllVoted = totalVotes >= (room?.players.length || 0);
+
   return (
     <main className="min-h-screen bg-[#0a0f1d] text-slate-100 font-display relative overflow-x-hidden selection:bg-[#ec5b13] selection:text-white">
       {/* Off-screen Story Generation Card */}
@@ -493,7 +522,7 @@ export default function ResultPage() {
          {/* Global Control Bar (Fixed Bottom on Mobile) */}
          <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#0a0f1d] via-[#0a0f1d]/95 to-transparent z-40 block md:hidden">
             <div className="flex gap-2">
-               <button onClick={handlePlayAgain} className="flex-[2] bg-white text-[#0a0f1d] py-5 rounded-2xl font-black text-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-2xl shadow-white/5">
+               <button onClick={handleInitialRequest} className="flex-[2] bg-white text-[#0a0f1d] py-5 rounded-2xl font-black text-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-2xl shadow-white/5">
                   <span className="material-symbols-outlined">refresh</span> REPLAY
                </button>
                <button 
@@ -510,22 +539,94 @@ export default function ResultPage() {
          </div>
 
          {/* Desktop Controls */}
-         <div className="hidden md:flex gap-6 mb-20 max-w-4xl mx-auto">
-            <button onClick={handlePlayAgain} className="flex-[2] bg-white text-[#0a0f1d] py-7 rounded-[2.5rem] font-black text-3xl hover:bg-[#ec5b13] hover:text-white transition-all transform hover:scale-[1.02] active:scale-95 shadow-2xl flex items-center justify-center gap-4">
-               <span className="material-symbols-outlined text-4xl">celebration</span> PLAY AGAIN
-            </button>
-            <button 
-              onClick={handleShareStory} 
-              disabled={sharing}
-              className="flex-1 bg-[#ec5b13] text-white py-7 rounded-[2.5rem] font-black text-2xl hover:bg-[#ec5b13]/90 transition-all transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 shadow-2xl shadow-[#ec5b13]/20"
-            >
-               <span className="material-symbols-outlined text-3xl">{sharing ? 'sync' : 'share'}</span>
-               {sharing ? 'GENERATING...' : 'SHARE STORY'}
-            </button>
-            <button onClick={handleQuitGame} className="flex-1 px-12 py-7 rounded-[2.5rem] bg-white/5 border border-white/10 font-black text-xl hover:bg-white/10 transition-all flex items-center justify-center gap-3">
-               EXIT
-            </button>
+         <div className="hidden md:flex flex-col items-center gap-6 mb-20 max-w-4xl mx-auto">
+            <div className="flex flex-row items-center gap-4 w-full">
+                 {totalVotes === 0 ? (
+                    <button 
+                      onClick={handleInitialRequest}
+                      className="flex-1 bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white font-black px-12 py-7 rounded-[2.5rem] text-3xl transition-all shadow-2xl flex items-center justify-center gap-4 transform hover:scale-[1.02]"
+                    >
+                      <span className="material-symbols-outlined text-4xl">restart_alt</span>
+                      PLAY AGAIN
+                    </button>
+                 ) : (
+                    <div className="flex-1 bg-white/10 px-12 py-7 rounded-[2.5rem] border border-white/10 flex items-center justify-center gap-8 backdrop-blur-md">
+                       <span className="text-xl font-black text-slate-400 uppercase tracking-widest">Replay Votes: </span>
+                       <span className="text-emerald-400 font-extrabold text-2xl">{acceptedVotes} ACCEPT</span>
+                       <span className="text-red-400 font-extrabold text-2xl">{declinedVotes} DECLINE</span>
+                    </div>
+                 )}
+
+                 <button 
+                   onClick={handleShareStory} 
+                   disabled={sharing}
+                   className="flex-1 bg-purple-600 text-white py-7 rounded-[2.5rem] font-black text-2xl hover:bg-purple-500 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-3 shadow-2xl"
+                 >
+                    <span className="material-symbols-outlined text-3xl">{sharing ? 'sync' : 'share'}</span>
+                    {sharing ? 'GENERATING...' : 'SHARE STORY'}
+                 </button>
+            </div>
+
+            <div className="flex flex-row items-center gap-4 w-full">
+                 {isAllVoted && room.hostId === sessionId && (
+                    <button 
+                      onClick={handleRestart}
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-white font-black py-6 rounded-[2rem] text-2xl transition-all shadow-[0_0_40px_rgba(16,185,129,0.3)] animate-pulse"
+                    >
+                      READY! START NEW MATCH
+                    </button>
+                 )}
+                 
+                 <button 
+                   onClick={() => router.push("/")}
+                   className="flex-1 bg-white/5 hover:bg-white/10 text-white font-black py-6 rounded-[2rem] text-xl transition-all border border-white/10"
+                 >
+                   EXIT TO MENU
+                 </button>
+            </div>
          </div>
+
+        {/* Play Again Vote Modal */}
+        {showVoteModal && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-[#0a0f1d]/90 backdrop-blur-xl animate-fade-in">
+             <div className="bg-white/[0.03] border border-white/20 p-10 md:p-14 rounded-[3.5rem] w-full max-w-xl text-center relative overflow-hidden shadow-2xl animate-scale-in">
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#ec5b13] via-purple-500 to-blue-500"></div>
+                
+                <div className="w-24 h-24 bg-[#ec5b13]/20 rounded-3xl mx-auto flex items-center justify-center text-[#ec5b13] mb-8">
+                   <span className="material-symbols-outlined text-5xl">sync_alt</span>
+                </div>
+                
+                <h3 className="text-4xl md:text-5xl font-black text-white italic uppercase mb-2 tracking-tighter">PLAY AGAIN?</h3>
+                <p className="text-slate-400 font-medium text-lg md:text-xl mb-12">The host has requested another round. Will you join the arena?</p>
+                
+                <div className="flex flex-col gap-4">
+                   <button 
+                     onClick={() => { SoundEffects.playSuccess(); respondToPlayAgain(roomId as string, sessionId, 'accept'); }}
+                     className="bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white font-black py-6 rounded-[2.5rem] text-2xl transition-all shadow-xl active:scale-95"
+                   >
+                     YES, I'M IN!
+                   </button>
+                   <button 
+                     onClick={() => { SoundEffects.playError(); respondToPlayAgain(roomId as string, sessionId, 'decline'); }}
+                     className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white font-black py-6 rounded-[2.5rem] text-xl transition-all border border-white/10 active:scale-95"
+                   >
+                     NO, LEAVING
+                   </button>
+                </div>
+                
+                <div className="mt-12 flex justify-center items-center gap-6">
+                   <div className="flex -space-x-3">
+                      {room.players.map((p, i) => (
+                         <div key={p.id} className={`w-10 h-10 rounded-xl flex items-center justify-center text-xs font-black ring-4 ring-[#0a0f1d] border ${requests[p.id] === 'accept' ? 'bg-emerald-500 border-emerald-400 text-white' : requests[p.id] === 'decline' ? 'bg-red-500 border-red-400 text-white' : 'bg-slate-800 border-white/10 text-slate-500'}`}>
+                            {p.name.charAt(0)}
+                         </div>
+                      ))}
+                   </div>
+                   <span className="text-xs font-black text-slate-500 uppercase tracking-widest">{acceptedVotes}/{room.players.length} READY</span>
+                </div>
+             </div>
+          </div>
+        )}
 
         {/* History Log */}
         <div className="animate-fade-in-up pb-10" style={{ animationDelay: '0.8s' }}>

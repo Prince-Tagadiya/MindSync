@@ -29,6 +29,7 @@ export interface CreateRoomOptions {
   timePerRound: number;
   showPrompt: boolean;
   preventRepeated: boolean;
+  maxRounds: number;
 }
 
 export async function createRoom(options: CreateRoomOptions): Promise<string> {
@@ -47,16 +48,18 @@ export async function createRoom(options: CreateRoomOptions): Promise<string> {
     hostId: options.hostId,
     players: [{ id: options.hostId, name: options.hostName, score: 0, coins: 0 }],
     round: 0,
-    totalRounds: 999, // Essentially infinite
+    totalRounds: options.maxRounds, // Now from options
     timePerRound: options.timePerRound,
     showPrompt: options.showPrompt,
     preventRepeated: options.preventRepeated,
     usedWords: [],
+    usedPrompts: [], // Track used prompts to avoid repetition
     currentGuesses: {},
     currentGuessTimes: {},
     roundHistory: {},
     currentPrompt: "",
     createdAt: Date.now(),
+    playAgainRequests: {},
   };
 
   await setDoc(roomRef, room);
@@ -117,16 +120,18 @@ export async function startGame(roomId: string, hostId: string): Promise<{ succe
     return { success: false, error: "Need at least 2 players to start." };
   }
 
-  const prompt = getRandomPrompt();
+  const prompt = getRandomPrompt(room.usedPrompts || []);
 
   await updateDoc(roomRef, {
     status: "playing",
     round: 1,
     currentPrompt: prompt,
+    usedPrompts: [prompt],
     currentGuesses: {},
     currentGuessTimes: {},
     roundHistory: {},
     roundStartedAt: Date.now(),
+    playAgainRequests: {}, // Clear on start
   });
 
   return { success: true };
@@ -346,11 +351,12 @@ export async function nextRound(
   const lastRoundWords = Object.values(room.currentGuesses);
   const newUsedWords = [...room.usedWords, ...lastRoundWords];
 
-  const prompt = getRandomPrompt();
+  const nextPrompt = getRandomPrompt(room.usedPrompts || []);
 
   await updateDoc(roomRef, {
     round: room.round + 1,
-    currentPrompt: prompt,
+    currentPrompt: nextPrompt,
+    usedPrompts: arrayUnion(nextPrompt),
     currentGuesses: {},
     currentGuessTimes: {},
     usedWords: newUsedWords,
@@ -453,22 +459,31 @@ export async function playAgain(roomId: string): Promise<void> {
   
   const room = snap.data() as Room;
   
-  // Find next host
-  const currentIndex = room.players.findIndex(p => p.id === room.hostId);
-  const nextHostIndex = room.players.length > 0 ? (currentIndex + 1) % room.players.length : 0;
-  const nextHostId = room.players.length > 0 ? room.players[nextHostIndex].id : room.hostId;
-
+  // SAME HOST as requested
   const resetPlayers = room.players.map(p => ({ ...p, score: 0, coins: 0 }));
 
   await updateDoc(roomRef, {
     status: "lobby",
-    hostId: nextHostId,
     players: resetPlayers,
     round: 0,
     usedWords: [],
+    usedPrompts: [],
     currentGuesses: {},
     roundHistory: {},
-    currentPrompt: ""
+    currentPrompt: "",
+    playAgainRequests: {},
+  });
+}
+
+// ===== PLAY AGAIN REQUEST SYSTEM =====
+export async function respondToPlayAgain(
+  roomId: string, 
+  playerId: string, 
+  response: 'accept' | 'decline'
+): Promise<void> {
+  const roomRef = doc(db, "rooms", roomId);
+  await updateDoc(roomRef, {
+    [`playAgainRequests.${playerId}`]: response
   });
 }
 

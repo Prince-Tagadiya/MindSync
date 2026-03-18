@@ -23,6 +23,7 @@ export interface Room {
   showPrompt: boolean;
   preventRepeated: boolean;
   usedWords: string[];
+  usedPrompts: string[];
   currentGuesses: Record<string, string>; // { playerId: word }
   currentGuessTimes: Record<string, number>; // { playerId: timestamp }
   roundHistory: Record<number, Record<string, string>>; // { roundNumber: { playerId: word } }
@@ -34,4 +35,6 @@ export interface Room {
     playerIds: string[];
   };
   lastMatchResults?: MatchResults;
+  maxRounds?: number;
+  playAgainRequests?: Record<string, 'accept' | 'decline' | 'pending'>;
 }
