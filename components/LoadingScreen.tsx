@@ -9,11 +9,8 @@ export default function LoadingScreen() {
   useEffect(() => {
     // Simulate initial load or wait for window.onload
     const handleLoad = () => {
-      // Small delay to let the progress bar finish its animation "vibe"
-      setTimeout(() => {
-        setFadeOut(true);
-        setTimeout(() => setLoading(false), 800);
-      }, 3500); 
+      setFadeOut(true);
+      setTimeout(() => setLoading(false), 800);
     };
 
     if (document.readyState === "complete") {

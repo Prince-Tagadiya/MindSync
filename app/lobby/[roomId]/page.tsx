@@ -96,12 +96,13 @@ export default function LobbyPage() {
         await navigator.share(shareData);
       } catch (err) {
         console.log("Share cancelled or failed", err);
-        // Fallback to copy
+        // Fallback to copy URL only
         navigator.clipboard.writeText(inviteUrl);
+        alert("Invite link copied!");
       }
     } else {
       navigator.clipboard.writeText(inviteUrl);
-      alert("Invite link copied to clipboard!");
+      alert("Invite link copied!");
     }
   };
 
