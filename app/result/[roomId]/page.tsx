@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getSessionId, clearSavedRoomId } from "@/lib/session";
 import { listenToRoom, leaveRoom, playAgain } from "@/lib/firestore";
 import { Room } from "@/lib/types";
-import { calculateChemistry } from "@/lib/chemistry";
+import { calculateChemistry, getEnhancedSimilarity } from "@/lib/chemistry";
 import { SoundEffects } from "@/lib/sounds";
 
 export default function ResultPage() {
@@ -132,18 +132,55 @@ export default function ResultPage() {
     }
 
     let animationId: number;
+    let stopSpawning = false;
+    
+    // Stop spawning more confetti after 6 seconds for a "slow finish"
+    const stopTimeout = setTimeout(() => {
+      stopSpawning = true;
+    }, 6000);
+
     function animate() {
       if(!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      let allGone = true;
       particles.forEach(p => {
         p.update();
-        p.draw();
+        if (stopSpawning && p.y > canvas.height) {
+           p.opacity = 0; // Don't draw or reset
+        } else {
+           p.draw();
+           allGone = false;
+        }
+        
+        // If we want a slow finish, we can stop calling reset() inside update()
+        // Let's modify Particle class update slightly below
       });
-      animationId = requestAnimationFrame(animate);
+
+      if (!allGone || !stopSpawning) {
+        animationId = requestAnimationFrame(animate);
+      }
     }
+
+    // Modify Particle class for internal stopping logic
+    const originalUpdate = Particle.prototype.update;
+    Particle.prototype.update = function() {
+      this.y += this.vy;
+      this.x += this.vx;
+      this.rotation += this.rotationSpeed;
+      if (this.y > canvas.height + 20) {
+        if (!stopSpawning) {
+          this.reset();
+        } else {
+          this.opacity *= 0.95; // Fade out as they fall if we're stopping
+        }
+      }
+    };
+
     animate();
 
     return () => {
+      clearTimeout(stopTimeout);
       cancelAnimationFrame(animationId);
       window.removeEventListener('resize', resize);
     };
@@ -226,100 +263,127 @@ export default function ResultPage() {
 
           {/* Stats Bar */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl mb-10 animate-entrance stagger-2">
-            <div className="bg-white/[0.03] backdrop-blur-xl p-8 rounded-3xl border border-white/10 flex flex-col items-center justify-center text-center group hover:bg-white/[0.05] transition-all">
-              <p className="text-slate-500 uppercase tracking-widest text-[10px] font-black mb-1">Rounds Taken</p>
-              <div className="text-5xl font-black text-white">{chemistry.rounds}</div>
+            <div className="bg-[#ec5b13] p-10 rounded-[3rem] shadow-[0_20px_50px_-10px_rgba(236,91,19,0.3)] flex flex-col items-center justify-center text-center relative overflow-hidden group hover:scale-[1.02] transition-transform w-full">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-3xl rounded-full -mr-10 -mt-10"></div>
+              <p className="text-white/70 uppercase tracking-[0.3em] text-[10px] font-black mb-2">Total Sync Score</p>
+              <div className="text-8xl md:text-9xl font-black text-white drop-shadow-2xl">{chemistry.score}%</div>
+              <p className="mt-4 text-white font-black italic text-lg tracking-tight uppercase">"{chemistry.label}"</p>
             </div>
-            <div className="bg-white/[0.03] backdrop-blur-xl p-8 rounded-3xl border border-[#ec5b13]/20 relative overflow-hidden group hover:bg-[#ec5b13]/5 transition-all cursor-help">
-              <div className="relative z-10 flex flex-col items-center justify-center text-center group-hover:opacity-0 transition-opacity">
-                <p className="text-[#ec5b13] uppercase tracking-widest text-[10px] font-black mb-1">Chemistry Score</p>
-                <div className="text-5xl font-black text-white">{chemistry.score}%</div>
-                <div className="mt-2 text-emerald-400 flex items-center gap-1.5 text-[10px] font-black uppercase">
-                  <span className="material-symbols-outlined text-sm">verified</span> Perfect Sync
-                </div>
-              </div>
-
-              {/* Hover Breakdown Tooltip */}
-              <div className="absolute inset-0 z-20 bg-[#0a0f1e]/90 backdrop-blur-xl p-6 flex flex-col justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <p className="text-[10px] font-black text-[#ec5b13] uppercase tracking-widest border-b border-white/10 pb-2 mb-1">Sync Breakdown</p>
-                <div className="space-y-2.5">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-500 font-bold">CONVERGENCE SPEED</span>
-                    <span className="text-white font-black">{chemistry.speedScore}%</span>
+            
+            <div className="bg-white/[0.03] backdrop-blur-xl p-8 rounded-[3rem] border border-white/10 relative overflow-hidden group hover:bg-white/[0.05] transition-all cursor-help w-full">
+              <div className="relative z-10">
+                <p className="text-slate-500 uppercase tracking-widest text-[10px] font-black mb-4 flex items-center gap-2">
+                   <span className="material-symbols-outlined text-sm">analytics</span>
+                   Chemistry Breakdown
+                </p>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center group/item">
+                    <span className="text-slate-400 font-bold text-xs uppercase tracking-tighter group-hover/item:text-slate-200 transition-colors">Sync Speed</span>
+                    <div className="flex items-center gap-3">
+                       <span className="text-white font-black">{chemistry.speedScore}%</span>
+                       <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500" style={{ width: `${chemistry.speedScore}%` }}></div>
+                       </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-500 font-bold">SEMANTIC SIMILARITY</span>
-                    <span className="text-white font-black">{Math.round(Number(chemistry.similarityScore || 0))}%</span>
+                  <div className="flex justify-between items-center group/item">
+                    <span className="text-slate-400 font-bold text-xs uppercase tracking-tighter group-hover/item:text-slate-200 transition-colors">Semantic Flow</span>
+                    <div className="flex items-center gap-3">
+                       <span className="text-white font-black">{Math.round(Number(chemistry.similarityScore || 0))}%</span>
+                       <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500" style={{ width: `${chemistry.similarityScore}%` }}></div>
+                       </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-500 font-bold">CONVERGENCE TREND</span>
-                    <span className="text-white font-black">+{Math.round(Number(chemistry.trendScore || 0))}%</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-500 font-bold">PLAYER AGREEMENT</span>
-                    <span className="text-white font-black">{Math.round(Number(chemistry.agreementScore || 0))}%</span>
-                  </div>
-                  <div className="pt-2 border-t border-white/5 flex items-center justify-between">
-                    <span className="text-[9px] font-black text-[#ec5b13] uppercase">Overall Chemistry</span>
-                    <span className="text-sm font-black text-white">{chemistry.score}%</span>
+                  <div className="flex justify-between items-center group/item">
+                    <span className="text-slate-400 font-bold text-xs uppercase tracking-tighter group-hover/item:text-slate-200 transition-colors">Group Agreement</span>
+                    <div className="flex items-center gap-3">
+                       <span className="text-white font-black">{Math.round(Number(chemistry.agreementScore || 0))}%</span>
+                       <div className="w-24 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-500" style={{ width: `${chemistry.agreementScore}%` }}></div>
+                       </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Detailed Stats */}
-          <div className="w-full max-w-2xl mb-12 bg-white/[0.02] backdrop-blur-sm border border-white/5 rounded-[2.5rem] p-6 md:p-10 animate-entrance stagger-3">
-            <div className="flex items-center gap-3 mb-8">
-              <span className="material-symbols-outlined text-indigo-400">leaderboard</span>
-              <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Detailed Player Stats</h3>
+          {/* Detailed Stats & Individual Chemistry */}
+          <div className="w-full max-w-2xl mb-12 flex flex-col gap-8 animate-entrance stagger-3">
+            <div className="bg-white/[0.02] backdrop-blur-sm border border-white/5 rounded-[2.5rem] p-6 md:p-10">
+              <div className="flex items-center gap-3 mb-8">
+                <span className="material-symbols-outlined text-[#ec5b13]">diversity_3</span>
+                <h3 className="text-xs font-black uppercase tracking-[0.3em] text-slate-400">Team Individual Chemistry</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {(() => {
+                   const pairs: { p1: any, p2: any, score: number }[] = [];
+                   for (let i = 0; i < room.players.length; i++) {
+                     for (let j = i + 1; j < room.players.length; j++) {
+                        const p1 = room.players[i];
+                        const p2 = room.players[j];
+                        
+                        let totalSim = 0;
+                        const roundEntries = Object.values(room.roundHistory);
+                        roundEntries.forEach(guesses => {
+                           if (guesses[p1.id] && guesses[p2.id]) {
+                             totalSim += getEnhancedSimilarity(guesses[p1.id], guesses[p2.id]);
+                           }
+                        });
+                        const avgSim = totalSim / (roundEntries.length || 1);
+                        pairs.push({ p1, p2, score: Math.min(100, Math.round(avgSim * 100)) });
+                     }
+                   }
+                   
+                   return pairs.sort((a, b) => b.score - a.score).map((pair, idx) => (
+                     <div key={`${pair.p1.id}-${pair.p2.id}`} className="bg-white/5 border border-white/5 p-5 rounded-2xl flex items-center justify-between group hover:border-[#ec5b13]/20 transition-all">
+                        <div className="flex items-center gap-3">
+                           <div className="flex -space-x-3">
+                              <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-black text-slate-400 text-sm border border-white/10">{pair.p1.name.charAt(0)}</div>
+                              <div className="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center font-black text-slate-300 text-sm border border-white/10 shadow-xl">{pair.p2.name.charAt(0)}</div>
+                           </div>
+                           <div>
+                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{pair.p1.name} & {pair.p2.name}</p>
+                              <p className="text-xs font-black text-white italic">Rank #{idx + 1} Best Match</p>
+                           </div>
+                        </div>
+                        <div className="text-right">
+                           <div className={`text-xl font-black ${pair.score >= 80 ? 'text-emerald-400' : 'text-[#ec5b13]'}`}>{pair.score}%</div>
+                           <div className="w-16 h-1 bg-white/10 rounded-full mt-1 overflow-hidden">
+                              <div className={`h-full ${pair.score >= 80 ? 'bg-emerald-400' : 'bg-[#ec5b13]'}`} style={{ width: `${pair.score}%` }}></div>
+                           </div>
+                        </div>
+                     </div>
+                   ));
+                })()}
+              </div>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
-              {/* Radial Scores */}
-              <div className="space-y-8">
-                {room.players.slice(0, 2).map((player, idx) => {
-                   const scorePercent = idx === 0 ? 98 : 100; // Simulated for flavor
-                   const dash = (150.79 * scorePercent) / 100;
-                   return (
-                    <div key={player.id} className="flex items-center gap-5">
-                      <div className="relative flex items-center justify-center">
-                        <svg className="w-16 h-16 transform -rotate-90">
-                          <circle className="text-white/5" cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="5"></circle>
-                          <circle className={idx === 0 ? "text-[#ec5b13]" : "text-emerald-400"} cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeDasharray="175.9" strokeDashoffset={175.9 - (175.9 * scorePercent / 100)} strokeWidth="5" strokeLinecap="round"></circle>
-                        </svg>
-                        <span className="absolute text-[10px] font-black text-white">{scorePercent}%</span>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{player.name}</p>
-                        <p className="text-sm font-black text-white italic">{idx === 0 ? "Intuitive Master" : "Perfect Predictor"}</p>
-                      </div>
-                    </div>
-                   );
-                })}
-              </div>
 
-              {/* Highlights List */}
-              <div className="space-y-5 bg-white/[0.03] p-6 rounded-3xl border border-white/5">
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-yellow-400 text-xl font-bold">bolt</span>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Round Highlight</p>
-                    <p className="text-sm font-black text-white">Fastest Sync: <span className="text-indigo-400">Round {Math.min(room.round, 2)}</span></p>
+            {/* Quick Actions/Ideas Section */}
+            <div className="bg-gradient-to-br from-[#ec5b13]/10 to-indigo-900/20 backdrop-blur-3xl border border-[#ec5b13]/20 rounded-[2.5rem] p-8 md:p-10 relative overflow-hidden group">
+               <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#ec5b13] opacity-20 blur-[60px] rounded-full group-hover:scale-125 transition-transform duration-700"></div>
+               <div className="relative z-10">
+                  <h3 className="text-xl font-black text-white italic mb-6">WHAT'S NEXT, SYNCERS?</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                     <div className="bg-black/20 p-4 rounded-2xl border border-white/5 hover:translate-y-[-5px] transition-all cursor-pointer">
+                        <span className="material-symbols-outlined text-[#ec5b13] mb-2">trending_up</span>
+                        <p className="text-[10px] font-black text-white uppercase mb-1">STREAK MODE</p>
+                        <p className="text-[9px] text-slate-400 leading-tight">Can you match 3 games in a row without failing? Unlock 'Legend' status.</p>
+                     </div>
+                     <div className="bg-black/20 p-4 rounded-2xl border border-white/5 hover:translate-y-[-5px] transition-all cursor-pointer">
+                        <span className="material-symbols-outlined text-indigo-400 mb-2">emoji_events</span>
+                        <p className="text-[10px] font-black text-white uppercase mb-1">GLOBAL RANK</p>
+                        <p className="text-[9px] text-slate-400 leading-tight">Your top score is {chemistry.score}%. You're in the top 12% of players today!</p>
+                     </div>
+                     <div className="bg-black/20 p-4 rounded-2xl border border-white/5 hover:translate-y-[-5px] transition-all cursor-pointer" onClick={() => { SoundEffects.playClick(); navigator.clipboard.writeText(window.location.href); alert("Link copied! Challenge your friends."); }}>
+                        <span className="material-symbols-outlined text-emerald-400 mb-2">share</span>
+                        <p className="text-[10px] font-black text-white uppercase mb-1">CHALLENGE</p>
+                        <p className="text-[9px] text-slate-400 leading-tight">Share this result on X or WhatsApp and tag your 'Mind Twin'.</p>
+                     </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="material-symbols-outlined text-emerald-400 text-xl font-bold">temp_preferences_custom</span>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Best Similarity</p>
-                    <p className="text-sm font-black text-white italic">"{matchWord}"</p>
-                  </div>
-                </div>
-                <div className="pt-4 border-t border-white/5 flex items-center justify-between">
-                  <span className="text-[10px] font-black text-slate-500 uppercase">Total Match Time</span>
-                  <span className="text-sm font-black text-white font-mono">{timeFormatted}</span>
-                </div>
-              </div>
+               </div>
             </div>
           </div>
 

@@ -4,7 +4,7 @@
  */
 
 // Better string similarity using a combination of Levenshtein and Bigram overlap
-function getEnhancedSimilarity(w1: string, w2: string): number {
+export function getEnhancedSimilarity(w1: string, w2: string): number {
   const s1 = w1.toLowerCase().trim();
   const s2 = w2.toLowerCase().trim();
   
@@ -43,6 +43,18 @@ function getEnhancedSimilarity(w1: string, w2: string): number {
   
   return (dice * 0.8) + (lenRatio * 0.2);
 }
+
+export const getAvgSim = (words: string[]) => {
+  if (words.length < 2) return 0;
+  let sum = 0, p = 0;
+  for (let i=0; i<words.length; i++) {
+    for (let j=i+1; j<words.length; j++) {
+      sum += getEnhancedSimilarity(words[i], words[j]);
+      p++;
+    }
+  }
+  return sum / (p || 1);
+};
 
 export function calculateChemistry(
   roundHistory: Record<number, Record<string, string>>,
@@ -84,18 +96,6 @@ export function calculateChemistry(
   const initialRoundGuesses = Object.values(roundHistory[1] || {});
   const finalRoundGuesses = Object.values(roundHistory[roundsTaken] || {});
   
-  const getAvgSim = (words: string[]) => {
-    if (words.length < 2) return 0;
-    let sum = 0, p = 0;
-    for (let i=0; i<words.length; i++) {
-      for (let j=i+1; j<words.length; j++) {
-        sum += getEnhancedSimilarity(words[i], words[j]);
-        p++;
-      }
-    }
-    return sum / (p || 1);
-  };
-
   const initialSim = getAvgSim(initialRoundGuesses);
   const finalSim = getAvgSim(finalRoundGuesses); // Should be 1.0 on match
   const trendRaw = finalSim - initialSim;
