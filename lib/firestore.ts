@@ -182,14 +182,27 @@ export function checkAllMatch(guesses: Record<string, string>): boolean {
 function calculateRoundPoints(players: Player[], guesses: Record<string, string>, guessTimes?: Record<string, number>, roundStartedAt?: number, timeLimit?: number): Player[] {
   const newPlayers = [...players];
   const playerIds = players.map(p => p.id);
-  const guessValues = Object.values(guesses).map(w => w.trim().toLowerCase());
+  const isTwoPlayer = playerIds.length === 2;
+
+  // 0. Initial penalty for no submission
+  newPlayers.forEach(p => {
+    if (!guesses[p.id] || guesses[p.id].trim() === "") {
+      p.coins = Math.max(0, (p.coins || 0) - 5);
+    }
+  });
+
+  const validGuesses = Object.entries(guesses).filter(([id, w]) => w.trim() !== "");
+  const guessValues = validGuesses.map(([id, w]) => w.trim().toLowerCase());
   
+  if (validGuesses.length < 2) return newPlayers;
+
   // 1. First Blood Bonus (+5)
   if (guessTimes) {
     let firstId = "";
     let minTime = Infinity;
     for (const [id, time] of Object.entries(guessTimes)) {
-       if (time < minTime) {
+       // Only count valid guesses for first blood
+       if (guesses[id] && guesses[id].trim() !== "" && time < minTime) {
          minTime = time;
          firstId = id;
        }
@@ -200,10 +213,11 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
     }
   }
 
-  // 2. Perfect Harmony (+25 each)
+  // 2. Perfect Harmony (+25 / +15 for 2p)
   const allUniqueWords = Array.from(new Set(guessValues));
-  if (allUniqueWords.length === 1 && playerIds.length > 1) {
-    newPlayers.forEach(p => p.coins = (p.coins || 0) + 25);
+  const harmonyBonus = isTwoPlayer ? 15 : 25;
+  if (allUniqueWords.length === 1 && guessValues.length === playerIds.length) {
+    newPlayers.forEach(p => p.coins = (p.coins || 0) + harmonyBonus);
   }
 
   // 3. Pairwise Bonuses
@@ -221,31 +235,34 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
       const isExact = w1 === w2;
       const sim = getEnhancedSimilarity(w1, w2);
       
-      // ULTRA SYNC (+50) - Same second!
+      // ULTRA SYNC (+50 / +40 for 2p) - Same second!
+      const ultraBonus = isTwoPlayer ? 40 : 50;
       const isSimultaneous = isExact && Math.floor(t1 / 1000) === Math.floor(t2 / 1000) && t1 !== 0;
 
       if (isSimultaneous) {
         const p1 = newPlayers.find(p => p.id === p1Id);
         const p2 = newPlayers.find(p => p.id === p2Id);
-        if (p1) p1.coins = (p1.coins || 0) + 50;
-        if (p2) p2.coins = (p2.coins || 0) + 50;
+        if (p1) p1.coins = (p1.coins || 0) + ultraBonus;
+        if (p2) p2.coins = (p2.coins || 0) + ultraBonus;
       } 
       // MIND TWINS (+20) - Regular exact match or >90% spelling
       else if (isExact || sim >= 0.9) {
+        const twinBonus = isTwoPlayer ? 15 : 20;
         const p1 = newPlayers.find(p => p.id === p1Id);
         const p2 = newPlayers.find(p => p.id === p2Id);
-        if (p1) p1.coins = (p1.coins || 0) + 20;
-        if (p2) p2.coins = (p2.coins || 0) + 20;
+        if (p1) p1.coins = (p1.coins || 0) + twinBonus;
+        if (p2) p2.coins = (p2.coins || 0) + twinBonus;
 
-        // Last Second Save (+15 bonus)
+        // Last Second Save (+15 bonus / +10 for 2p)
+        const lateBonus = isTwoPlayer ? 10 : 15;
         if (roundStartedAt && timeLimit) {
            const limitMs = timeLimit * 1000;
            const s1 = t1 - roundStartedAt;
            const s2 = t2 - roundStartedAt;
            // If either submitted within final 5s of the round
            if (s1 > (limitMs - 5000) || s2 > (limitMs - 5000)) {
-             if (p1) p1.coins = (p1.coins || 0) + 15;
-             if (p2) p2.coins = (p2.coins || 0) + 15;
+             if (p1) p1.coins = (p1.coins || 0) + lateBonus;
+             if (p2) p2.coins = (p2.coins || 0) + lateBonus;
            }
         }
       } 
@@ -261,7 +278,55 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
   return newPlayers;
 }
 
-// ===== NEXT ROUND =====
+// ===== TRANSITION TO REVEAL (End of Play) =====
+export async function transitionToReveal(
+  roomId: string,
+  hostId: string
+): Promise<{ success: boolean; error?: string }> {
+  const roomRef = doc(db, "rooms", roomId);
+  const snap = await getDoc(roomRef);
+
+  if (!snap.exists()) return { success: false, error: "Room not found." };
+  const room = snap.data() as Room;
+
+  // Award coins for the round that just ended
+  const updatedPlayers = calculateRoundPoints(room.players, room.currentGuesses, room.currentGuessTimes, room.roundStartedAt, room.timePerRound);
+
+  // Determine last sync info for animation
+  let syncInfo: any = null;
+  const playerIds = updatedPlayers.map(p => p.id);
+  const isTwoPlayer = playerIds.length === 2;
+  
+  for (let i = 0; i < playerIds.length; i++) {
+    for (let j = i + 1; j < playerIds.length; j++) {
+      const w1 = room.currentGuesses[playerIds[i]]?.toLowerCase().trim();
+      const w2 = room.currentGuesses[playerIds[j]]?.toLowerCase().trim();
+      const t1 = room.currentGuessTimes?.[playerIds[i]] || 0;
+      const t2 = room.currentGuessTimes?.[playerIds[j]] || 0;
+
+      if (w1 && w2 && w1 === w2) {
+        if (Math.floor(t1/1000) === Math.floor(t2/1000)) {
+           syncInfo = { type: 'simultaneous', playerIds: [playerIds[i], playerIds[j]] };
+           break;
+        } else {
+           syncInfo = { type: 'exact', playerIds: [playerIds[i], playerIds[j]] };
+        }
+      }
+    }
+    if (syncInfo?.type === 'simultaneous') break;
+  }
+
+  await updateDoc(roomRef, {
+    players: updatedPlayers,
+    status: "reveal",
+    lastRoundSyncInfo: syncInfo,
+    [`roundHistory.${room.round}`]: room.currentGuesses,
+  });
+
+  return { success: true };
+}
+
+// ===== NEXT ROUND (Transition to Playing) =====
 export async function nextRound(
   roomId: string,
   hostId: string
@@ -277,47 +342,19 @@ export async function nextRound(
     return { success: false, error: "Only the host can advance rounds." };
   }
 
-  // Award coins for the round that just ended
-  const updatedPlayers = calculateRoundPoints(room.players, room.currentGuesses, room.currentGuessTimes, room.roundStartedAt, room.timePerRound);
-
-  // Determine last sync info for animation
-  let syncInfo: any = null;
-  const playerIds = room.players.map(p => p.id);
-  for (let i = 0; i < playerIds.length; i++) {
-    for (let j = i + 1; j < playerIds.length; j++) {
-      const w1 = room.currentGuesses[playerIds[i]]?.toLowerCase();
-      const w2 = room.currentGuesses[playerIds[j]]?.toLowerCase();
-      const t1 = room.currentGuessTimes?.[playerIds[i]] || 0;
-      const t2 = room.currentGuessTimes?.[playerIds[j]] || 0;
-
-      if (w1 && w1 === w2) {
-        if (Math.floor(t1/1000) === Math.floor(t2/1000)) {
-           syncInfo = { type: 'simultaneous', playerIds: [playerIds[i], playerIds[j]] };
-           break;
-        } else {
-           syncInfo = { type: 'exact', playerIds: [playerIds[i], playerIds[j]] };
-        }
-      }
-    }
-    if (syncInfo?.type === 'simultaneous') break;
-  }
-
-  // Collect used words from current round
-  const currentWords = Object.values(room.currentGuesses);
-  const newUsedWords = [...room.usedWords, ...currentWords];
+  // Collect used words from last round (which are still in currentGuesses)
+  const lastRoundWords = Object.values(room.currentGuesses);
+  const newUsedWords = [...room.usedWords, ...lastRoundWords];
 
   const prompt = getRandomPrompt();
 
   await updateDoc(roomRef, {
     round: room.round + 1,
     currentPrompt: prompt,
-    [`roundHistory.${room.round}`]: room.currentGuesses,
     currentGuesses: {},
     currentGuessTimes: {},
     usedWords: newUsedWords,
     status: "playing",
-    players: updatedPlayers,
-    lastRoundSyncInfo: syncInfo,
     roundStartedAt: Date.now(),
   });
 

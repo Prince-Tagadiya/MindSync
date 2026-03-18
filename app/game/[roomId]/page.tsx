@@ -7,6 +7,7 @@ import {
   listenToRoom,
   submitGuess,
   nextRound,
+  transitionToReveal,
   setRoomStatus,
   checkAllMatch,
   updateRoomSettings,
@@ -46,23 +47,30 @@ export default function GamePage() {
      if (!room) return;
      room.players.forEach(p => {
         const prev = prevCoinsRef.current[p.id] || 0;
-        if (p.coins > prev) {
+        if (p.coins !== prev) {
            if (p.id === sessionId) {
               const diff = p.coins - prev;
-              let description = "Pure Mind Luck!";
-              if (room.lastRoundSyncInfo) {
-                if (room.lastRoundSyncInfo.type === 'simultaneous' && diff >= 50) description = "ULTRA SYNC BONUS";
-                else if (room.lastRoundSyncInfo.type === 'exact' && diff >= 20) description = "MIND TWINS BONUS";
+              
+              if (diff < 0) {
+                 setCoinAlert(`${diff} COINS`);
+                 setToastDesc("TIMEOUT PENALTY!");
+                 SoundEffects.playError();
+              } else {
+                 let description = "Pure Mind Luck!";
+                 const isTwoPlayer = room.players.length === 2;
+                 
+                 // Smart guess logic based on deltas
+                 if (diff === 5) description = "FIRST BLOOD BONUS";
+                 else if (diff >= 40 || (diff >= 50 && !isTwoPlayer)) description = "ULTRA SYNC MATCH";
+                 else if (diff === 10) description = "LATE SYNC BONUS";
+                 else if (diff === 25 || diff === 15) description = "PERFECT HARMONY";
+                 else if (diff >= 15) description = "MIND TWINS SYNC";
+                 else if (diff === 10) description = "CLOSE MATCH SYNC";
+
+                 setCoinAlert(`+${diff} COINS!`);
+                 setToastDesc(description);
+                 SoundEffects.playCoin();
               }
-              
-              setCoinAlert(`${diff} COINS!`);
-              setToastDesc(description);
-              SoundEffects.playCoin();
-              
-              const announce = new SpeechSynthesisUtterance(`${description}: Received ${diff} coins`);
-              announce.volume = 0.5;
-              announce.rate = 1.2;
-              window.speechSynthesis.speak(announce);
               
               setTimeout(() => { setCoinAlert(null); setToastDesc(""); }, 4000);
            }
@@ -138,11 +146,11 @@ export default function GamePage() {
 
     // Auto-advance to countdown if everyone submitted (host only)
     if (isHost && room?.status === "playing") {
-      const allSubmitted = room.players.every((p) => room.currentGuesses[p.id]);
+      const allSubmitted = room.players.every((p) => room.currentGuesses[p.id] !== undefined);
       if (allSubmitted) {
         if (checkAllMatch(room.currentGuesses)) {
           // Skip countdown if it's a perfect match!
-          setRoomStatus(roomId, "reveal");
+          transitionToReveal(roomId, sessionId);
           setCountdown(0);
         } else {
           setRoomStatus(roomId, "countdown");
@@ -158,7 +166,7 @@ export default function GamePage() {
       if (isHost) {
         const timer = setTimeout(() => {
           if (room?.status === "countdown") {
-            setRoomStatus(roomId, "reveal");
+            transitionToReveal(roomId, sessionId);
             setCountdown(0);
           }
         }, 4500);
@@ -250,7 +258,7 @@ export default function GamePage() {
           clearInterval(interval);
           countdownRef.current = null;
           if (isHost && room?.status === "countdown") {
-            setRoomStatus(roomId, "reveal");
+            transitionToReveal(roomId, sessionId);
           }
           return 0;
         }
@@ -591,30 +599,40 @@ export default function GamePage() {
                   </div>
                 </div>
 
-                {/* Result Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
-                  {room.players.map((p, index) => {
-                    const word = room.currentGuesses[p.id] || "No Guess";
-                    
-                    return (
-                      <div 
-                        key={p.id} 
-                        className={`flex items-center p-4 bg-slate-800/80 backdrop-blur-md border ${isMatch ? 'border-yellow-400 font-bold shadow-[0_0_15px_rgba(250,204,21,0.3)]' : 'border-white/10'} rounded-2xl animate-entrance`}
-                        style={{ animationFillMode: 'both' }}
-                      >
-                        <div className={`w-14 h-14 rounded-full border-2 ${isMatch ? 'border-yellow-400 text-yellow-400' : 'border-purple-500 text-purple-400'} flex items-center justify-center font-bold text-xl shrink-0 bg-[#1e293b]`}>
-                          {p.name.charAt(0)}
-                        </div>
-                        <div className="ml-4 overflow-hidden">
-                          <p className="text-sm text-slate-400 font-bold uppercase tracking-wider truncate">{p.name}</p>
-                          <p className={`text-2xl font-black ${isMatch ? 'text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]' : 'text-purple-400'} truncate capitalize`}>
-                            {word}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+          {room.players.map((p, index) => {
+            const word = room.currentGuesses[p.id] || "";
+            const isNoGuess = !word || word === "-";
+            
+            return (
+              <div 
+                key={p.id} 
+                className={`flex items-center justify-between p-4 bg-slate-800/80 backdrop-blur-md border ${isMatch ? 'border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]' : isNoGuess ? 'border-red-500/50' : 'border-white/10'} rounded-2xl animate-entrance`}
+                style={{ animationFillMode: 'both' }}
+              >
+                <div className="flex items-center">
+                  <div className={`w-14 h-14 rounded-full border-2 ${isMatch ? 'border-yellow-400 text-yellow-400' : 'border-purple-500 text-purple-400'} flex items-center justify-center font-black text-xl shrink-0 bg-[#0a0f1e]`}>
+                    {p.name.charAt(0)}
+                  </div>
+                  <div className="ml-4 overflow-hidden">
+                    <p className="text-sm text-slate-400 font-bold uppercase tracking-wider truncate">{p.name}</p>
+                    <p className={`text-2xl font-black ${isMatch ? 'text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]' : isNoGuess ? 'text-red-400 italic opacity-60' : 'text-purple-400'} truncate capitalize`}>
+                      {isNoGuess ? "TIMED OUT" : word}
+                    </p>
+                  </div>
                 </div>
+
+                <div className="flex flex-col items-end shrink-0">
+                   <div className="flex items-center gap-1.5 bg-black/20 px-3 py-1 rounded-full border border-white/5">
+                      <span className="material-symbols-outlined text-yellow-500 text-sm">monetization_on</span>
+                      <span className={`text-lg font-black ${isNoGuess ? 'text-red-400' : 'text-white'}`}>{p.coins || 0}</span>
+                   </div>
+                   {isNoGuess && <span className="text-[9px] font-black text-red-400 uppercase tracking-widest mt-1">-5 PENALTY</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
                 {/* Action Footer */}
                 {isHost && (
