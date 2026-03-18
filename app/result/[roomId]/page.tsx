@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSessionId, clearSavedRoomId } from "@/lib/session";
 import { listenToRoom, leaveRoom, playAgain } from "@/lib/firestore";
 import { Room, Player } from "@/lib/types";
 import { calculateChemistry, getEnhancedSimilarity, getAvgSim, calculatePairwiseChemistry } from "@/lib/chemistry";
 import { SoundEffects } from "@/lib/sounds";
+import { toBlob } from "html-to-image";
 
 export default function ResultPage() {
   const params = useParams();
@@ -16,6 +17,8 @@ export default function ResultPage() {
 
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sharing, setSharing] = useState(false);
+  const storyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!roomId) return;
@@ -28,6 +31,46 @@ export default function ResultPage() {
     });
     return () => unsub();
   }, [roomId, router]);
+
+  const handleShareStory = async () => {
+    if (!storyRef.current || sharing) return;
+    setSharing(true);
+    SoundEffects.playClick();
+    
+    try {
+      const blob = await toBlob(storyRef.current, {
+        quality: 0.95,
+        width: 1080,
+        height: 1920,
+      });
+      
+      if (!blob) throw new Error("Failed to generate image");
+
+      const file = new File([blob], `MindSync-Result-${roomId}.jpg`, { type: 'image/jpeg' });
+      
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'We Synced on MindSync!',
+          text: 'Check out our chemistry score!',
+        });
+      } else {
+        // Fallback: Download the image
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `MindSync-Result-${roomId}.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+        alert("Story image downloaded! Share it manually to your story.");
+      }
+    } catch (error) {
+       console.error("Story sharing failed", error);
+       alert("Could not generate shareable image. Try again!");
+    } finally {
+       setSharing(false);
+    }
+  };
 
   // Confetti Animation Effect
   useEffect(() => {
@@ -265,9 +308,23 @@ export default function ResultPage() {
 
   const personalSyncs = pairwise.filter(p => p.p1 === room.players.find(p => p.id === sessionId)?.name || p.p2 === room.players.find(p => p.id === sessionId)?.name);
 
+  const topPartner = pairwise.length > 0 ? pairwise.reduce((prev, current) => (prev.score > current.score) ? prev : current) : null;
+  const storyTopPartners = topPartner ? {
+     p1: room?.players.find(p => p.name === topPartner.p1) || { name: topPartner.p1 },
+     p2: room?.players.find(p => p.name === topPartner.p2) || { name: topPartner.p2 }
+  } : null;
+
   return (
-    <main className="min-h-screen bg-[#0a0f1d] text-white relative overflow-x-hidden pb-32 sm:pb-20 selection:bg-[#ec5b13]/30">
-      <canvas id="confetti-canvas" className="fixed inset-0 pointer-events-none z-50"></canvas>
+    <main className="min-h-screen bg-[#0a0f1d] text-slate-100 font-display relative overflow-x-hidden selection:bg-[#ec5b13] selection:text-white">
+      {/* Off-screen Story Generation Card */}
+      <StoryCard 
+        room={room} 
+        totalChemistry={chemistry.score} 
+        topPartners={storyTopPartners} 
+        ref={storyRef}
+      />
+      
+      <canvas id="confetti-canvas" className="fixed inset-0 pointer-events-none z-50 pointer-events-none" />
       
       {/* Background Decor */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -410,27 +467,42 @@ export default function ResultPage() {
            </div>
         </div>
 
-        {/* Global Control Bar (Fixed Bottom on Mobile) */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#0a0f1d] via-[#0a0f1d]/95 to-transparent z-40 block md:hidden">
-           <div className="flex gap-4">
-              <button onClick={handlePlayAgain} className="flex-1 bg-white text-[#0a0f1d] py-5 rounded-2xl font-black text-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-2xl shadow-white/5">
-                 <span className="material-symbols-outlined">refresh</span> REPLAY
-              </button>
-              <button onClick={handleQuitGame} className="w-20 bg-white/10 rounded-2xl backdrop-blur-xl border border-white/10 flex items-center justify-center text-white active:scale-95 transition-transform">
-                 <span className="material-symbols-outlined">exit_to_app</span>
-              </button>
-           </div>
-        </div>
+         {/* Global Control Bar (Fixed Bottom on Mobile) */}
+         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#0a0f1d] via-[#0a0f1d]/95 to-transparent z-40 block md:hidden">
+            <div className="flex gap-2">
+               <button onClick={handlePlayAgain} className="flex-[2] bg-white text-[#0a0f1d] py-5 rounded-2xl font-black text-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-2xl shadow-white/5">
+                  <span className="material-symbols-outlined">refresh</span> REPLAY
+               </button>
+               <button 
+                onClick={handleShareStory} 
+                disabled={sharing}
+                className="flex-1 bg-[#ec5b13] text-white py-5 rounded-2xl font-black text-xl active:scale-95 transition-transform flex items-center justify-center gap-2 shadow-2xl"
+               >
+                  <span className="material-symbols-outlined">{sharing ? 'sync' : 'share'}</span>
+               </button>
+               <button onClick={handleQuitGame} className="w-16 bg-white/10 rounded-2xl backdrop-blur-xl border border-white/10 flex items-center justify-center text-white active:scale-95 transition-transform">
+                  <span className="material-symbols-outlined">exit_to_app</span>
+               </button>
+            </div>
+         </div>
 
-        {/* Desktop Controls */}
-        <div className="hidden md:flex gap-6 mb-20 max-w-2xl mx-auto">
-           <button onClick={handlePlayAgain} className="flex-[2] bg-white text-[#0a0f1d] py-7 rounded-[2.5rem] font-black text-3xl hover:bg-[#ec5b13] hover:text-white transition-all transform hover:scale-[1.02] active:scale-95 shadow-2xl flex items-center justify-center gap-4">
-              <span className="material-symbols-outlined text-4xl">celebration</span> PLAY AGAIN
-           </button>
-           <button onClick={handleQuitGame} className="flex-1 px-12 py-7 rounded-[2.5rem] bg-white/5 border border-white/10 font-black text-xl hover:bg-white/10 transition-all flex items-center justify-center gap-3">
-              EXIT
-           </button>
-        </div>
+         {/* Desktop Controls */}
+         <div className="hidden md:flex gap-6 mb-20 max-w-4xl mx-auto">
+            <button onClick={handlePlayAgain} className="flex-[2] bg-white text-[#0a0f1d] py-7 rounded-[2.5rem] font-black text-3xl hover:bg-[#ec5b13] hover:text-white transition-all transform hover:scale-[1.02] active:scale-95 shadow-2xl flex items-center justify-center gap-4">
+               <span className="material-symbols-outlined text-4xl">celebration</span> PLAY AGAIN
+            </button>
+            <button 
+              onClick={handleShareStory} 
+              disabled={sharing}
+              className="flex-1 bg-[#ec5b13] text-white py-7 rounded-[2.5rem] font-black text-2xl hover:bg-[#ec5b13]/90 transition-all transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3 shadow-2xl shadow-[#ec5b13]/20"
+            >
+               <span className="material-symbols-outlined text-3xl">{sharing ? 'sync' : 'share'}</span>
+               {sharing ? 'GENERATING...' : 'SHARE STORY'}
+            </button>
+            <button onClick={handleQuitGame} className="flex-1 px-12 py-7 rounded-[2.5rem] bg-white/5 border border-white/10 font-black text-xl hover:bg-white/10 transition-all flex items-center justify-center gap-3">
+               EXIT
+            </button>
+         </div>
 
         {/* History Log */}
         <div className="animate-fade-in-up pb-10" style={{ animationDelay: '0.8s' }}>
@@ -477,6 +549,85 @@ function StatItem({ label, value, icon, color }: { label: string, value: number,
         <span className="text-[11px] font-black uppercase tracking-[0.2em]">{label}</span>
       </div>
       <div className="text-4xl md:text-5xl font-black text-white">{value}%</div>
+    </div>
+  );
+}
+
+// STORY CARD COMPONENT (OFF-SCREEN)
+function StoryCard({ room, totalChemistry, topPartners, ref }: any) {
+  if (!room) return null;
+  return (
+    <div 
+      ref={ref}
+      style={{ width: '1080px', height: '1920px', position: 'fixed', left: '-10000px', top: '-10000px' }}
+      className="bg-[#0a0f1e] overflow-hidden flex flex-col font-['Be_Vietnam_Pro'] text-white p-0 relative"
+    >
+      {/* Background Decor */}
+      <div className="absolute inset-0 z-0">
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] via-[#0a0f1e] to-black"></div>
+          <div className="absolute top-[10%] left-[10%] w-[800px] h-[800px] bg-[#ec5b13]/10 rounded-full blur-[150px]"></div>
+          <div className="absolute bottom-[10%] right-[10%] w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[150px]"></div>
+      </div>
+
+      <div className="relative z-10 flex flex-col h-full p-20 items-center justify-between text-center">
+         {/* MindSync Header */}
+         <div>
+            <div className="text-white text-3xl font-black italic tracking-[0.3em] uppercase mb-4 opacity-40">MindSync</div>
+            <div className="w-32 h-1.5 bg-[#ec5b13] mx-auto rounded-full"></div>
+         </div>
+
+         {/* Main Hero */}
+         <div className="flex flex-col items-center">
+            <h1 className="text-8xl font-black italic tracking-tighter uppercase mb-6 leading-none">
+              <span className="text-[#ec5b13]">We</span> Synced!
+            </h1>
+            <div className="p-12 rounded-full border-4 border-white/10 bg-white/5 backdrop-blur-3xl shadow-[0_0_80px_rgba(236,91,19,0.2)]">
+               <div className="text-[200px] font-black leading-none text-[#ec5b13]">{totalChemistry}%</div>
+               <div className="text-2xl font-black tracking-[0.4em] uppercase text-white/40 mt-4">Chemistry</div>
+            </div>
+         </div>
+
+         {/* Connection Info */}
+         <div className="w-full space-y-12">
+            {topPartners && (
+              <div className="space-y-6">
+                <div className="text-white/60 font-black tracking-widest uppercase text-xl italic">Deepest Connection</div>
+                <div className="flex items-center justify-center gap-10">
+                   <div className="flex flex-col items-center gap-4">
+                      <div className="w-24 h-24 rounded-3xl bg-[#ec5b13]/20 flex items-center justify-center text-4xl font-black text-[#ec5b13]">{topPartners.p1.name.charAt(0)}</div>
+                      <div className="text-3xl font-black uppercase tracking-tight">{topPartners.p1.name}</div>
+                   </div>
+                   <span className="material-symbols-outlined text-6xl text-[#ec5b13]">link</span>
+                   <div className="flex flex-col items-center gap-4">
+                      <div className="w-24 h-24 rounded-3xl bg-[#ec5b13]/20 flex items-center justify-center text-4xl font-black text-[#ec5b13]">{topPartners.p2.name.charAt(0)}</div>
+                      <div className="text-3xl font-black uppercase tracking-tight">{topPartners.p2.name}</div>
+                   </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="bg-white/5 border border-white/10 rounded-[4rem] p-10 flex items-center justify-center gap-8">
+               <div className="text-right">
+                  <div className="text-white/40 font-bold text-xl uppercase tracking-widest mb-1">Rounds played</div>
+                  <div className="text-5xl font-black whitespace-nowrap">{room.round}</div>
+               </div>
+               <div className="w-px h-16 bg-white/10"></div>
+               <div className="text-left">
+                  <div className="text-white/40 font-bold text-xl uppercase tracking-widest mb-1">Total Players</div>
+                  <div className="text-5xl font-black whitespace-nowrap">{room.players.length}</div>
+               </div>
+            </div>
+         </div>
+
+         {/* Call to Action */}
+         <div className="space-y-8">
+            <div className="text-3xl font-black tracking-widest text-[#ec5b13] flex items-center justify-center gap-4">
+              <span className="material-symbols-outlined text-5xl">sensors</span>
+              SYNC YOUR MIND
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-white/30 lowercase italic">mindsync-app.netlify.app</div>
+         </div>
+      </div>
     </div>
   );
 }
