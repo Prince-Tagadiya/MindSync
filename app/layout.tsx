@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import LoadingScreen from "@/components/LoadingScreen";
 
 export const metadata: Metadata = {
   title: "MindSync - The Ultimate Word Matching Game",
@@ -14,10 +15,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;700;900&family=Lexend:wght@400;600;800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;700&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;600;800&display=swap" rel="stylesheet" />
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
       </head>
-      <body className="font-display bg-background-light dark:bg-mindsync-deep text-slate-900 dark:text-slate-100 min-h-screen overflow-x-hidden">
+      <body className="font-body bg-background-light dark:bg-mindsync-deep text-slate-900 dark:text-slate-100 min-h-screen overflow-x-hidden">
+        <LoadingScreen />
         {/* Background Elements */}
         <div className="fixed inset-0 z-[-1] overflow-hidden pointer-events-none">
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-900 to-[#ec5b13]/20"></div>
