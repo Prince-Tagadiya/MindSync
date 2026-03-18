@@ -60,6 +60,9 @@ export default function GamePage() {
     return () => unsub();
   }, [roomId, sessionId, router]);
 
+  const playersSubmitted = room?.players.filter((p) => room.currentGuesses[p.id]).length || 0;
+  const isMatch = room?.status === "reveal" ? checkAllMatch(room.currentGuesses) : false;
+
   useEffect(() => {
     if (room?.status === "playing" && !hasSubmitted) {
       if (!timerRef.current) {
@@ -99,9 +102,24 @@ export default function GamePage() {
   }, [room?.status, hasSubmitted, room?.currentGuesses, isHost]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
     if (room?.status === "countdown") {
       setLocalCountdown();
+      // Safety transition for host: if still on countdown after 4s, force reveal
+      if (isHost) {
+        const timer = setTimeout(() => {
+          if (room?.status === "countdown") {
+            setRoomStatus(roomId, "reveal");
+            setCountdown(0);
+          }
+        }, 4500);
+        return () => clearTimeout(timer);
+      }
+    } else if (room?.status === "reveal") {
+       setCountdown(0); // Ensure results show immediately
+       if (countdownRef.current) {
+         clearInterval(countdownRef.current);
+         countdownRef.current = null;
+       }
     } else {
        if (countdownRef.current) {
          clearInterval(countdownRef.current);
@@ -114,48 +132,39 @@ export default function GamePage() {
          countdownRef.current = null;
       }
     };
-  }, [room?.status]);
+  }, [room?.status, isHost, roomId]);
 
   // Text to speech effect on reveal
   useEffect(() => {
-    if (room?.status === "reveal" && countdown === 0 && room.currentGuesses && !hasSpokenRef.current) {
+    if (room?.status === "reveal" && (countdown === 0 || isMatch) && room.currentGuesses && !hasSpokenRef.current) {
       hasSpokenRef.current = true;
       window.speechSynthesis.cancel();
       
-      const speak = () => {
-        const voices = window.speechSynthesis.getVoices();
-        SoundEffects.playShout();
-        if (checkAllMatch(room.currentGuesses)) {
-          SoundEffects.playSuccess();
-        }
-        
-        room.players.forEach((p, index) => {
-          const word = room.currentGuesses[p.id];
-          if (word && word !== "-") {
-            const utterance = new SpeechSynthesisUtterance(word);
-            utterance.pitch = 0.8 + (index * 0.2); 
-            utterance.rate = 1.0;
-            utterance.voice = voices[index % voices.length] || voices[0];
-            window.speechSynthesis.speak(utterance);
-          }
-        });
-      };
-
-      if (window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.onvoiceschanged = speak;
-      } else {
-        speak();
+      const voices = window.speechSynthesis.getVoices();
+      SoundEffects.playShout();
+      if (isMatch) {
+        SoundEffects.playSuccess();
       }
+      
+      room.players.forEach((p, index) => {
+        const word = room.currentGuesses[p.id];
+        if (word && word !== "-") {
+          const utterance = new SpeechSynthesisUtterance(word);
+          utterance.pitch = 0.8 + (index * 0.15); 
+          utterance.rate = 1.1; // Slightly faster for more 'shout-like' energy
+          utterance.voice = voices[index % voices.length] || voices[0];
+          window.speechSynthesis.speak(utterance);
+        }
+      });
     }
+    
     if (room?.status === "playing") {
       hasSpokenRef.current = false;
     }
-  }, [room?.status, countdown]);
+  }, [room?.status, countdown, isMatch, room?.players?.length]);
 
   const setLocalCountdown = () => {
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
+    if (countdownRef.current) return;
     
     setCountdown(COUNTDOWN_TIME);
     SoundEffects.playTick();
@@ -232,9 +241,6 @@ export default function GamePage() {
   if (loading || !room) {
     return <div className="text-white text-center mt-20 font-bold">Loading Game...</div>;
   }
-
-  const playersSubmitted = room.players.filter((p) => room.currentGuesses[p.id]).length;
-  const isMatch = room.status === "reveal" ? checkAllMatch(room.currentGuesses) : false;
 
   return (
     <main className="flex-1 flex flex-col w-full h-full relative z-10 transition-all duration-300">
@@ -316,11 +322,11 @@ export default function GamePage() {
             {/* Sub-Views based on State */}
             {room.status === "playing" && !hasSubmitted && (
               <form onSubmit={handleSubmit} className="animate-entrance w-full space-y-6 md:space-y-10">
-                <div className="bg-white/5 backdrop-blur-3xl p-6 md:p-12 rounded-[2.5rem] md:rounded-[3.5rem] border border-white/10 shadow-2xl relative group transition-all hover:bg-white/[0.08] overflow-hidden">
-                  <div className="absolute -top-3 left-6 md:left-12 bg-[#ec5b13] px-6 py-1.5 rounded-full text-[10px] font-black tracking-[0.2em] uppercase shadow-lg shadow-[#ec5b13]/30 z-10">Your Word</div>
+                <div className="bg-white/5 backdrop-blur-3xl p-6 md:p-12 md:pb-16 rounded-[2.5rem] md:rounded-[3.5rem] border border-white/10 shadow-2xl relative group transition-all hover:bg-white/[0.08] min-h-[350px] flex flex-col justify-center">
+                  <div className="absolute -top-4 left-6 md:left-12 bg-[#ec5b13] px-6 py-2 rounded-full text-[10px] md:text-xs font-black tracking-[0.2em] uppercase shadow-lg shadow-[#ec5b13]/40 z-20 animate-pulse border border-white/20">Your Word</div>
                   
-                  <div className="space-y-8 md:space-y-10">
-                    <div className="relative group/input">
+                  <div className="space-y-10">
+                    <div className="relative group/input mt-4">
                       <input
                         autoFocus
                         value={guess}
@@ -330,7 +336,7 @@ export default function GamePage() {
                         }}
                         autoComplete="off"
                         placeholder="Sync your mind..."
-                        className="w-full bg-black/40 border-2 border-white/10 rounded-2xl md:rounded-[2.5rem] h-24 md:h-32 py-4 md:py-6 px-4 md:px-10 text-3xl md:text-5xl font-black text-center text-white placeholder:text-slate-700 outline-none focus:border-[#ec5b13] focus:ring-[15px] focus:ring-[#ec5b13]/25 transition-all duration-500 shadow-inner group-hover/input:border-white/20 capitalize tracking-wider leading-relaxed"
+                        className="w-full bg-black/40 border-2 border-white/10 rounded-2xl md:rounded-[2.5rem] h-24 md:h-36 py-4 md:py-6 px-4 md:px-10 text-3xl md:text-6xl font-black text-center text-white placeholder:text-slate-800 outline-none focus:border-[#ec5b13] focus:ring-[15px] focus:ring-[#ec5b13]/25 transition-all duration-500 shadow-inner group-hover/input:border-white/20 capitalize tracking-wider leading-relaxed"
                         maxLength={20}
                       />
                       <div className="absolute top-1/2 -translate-y-1/2 right-4 md:right-8 opacity-0 group-focus-within/input:opacity-100 transition-opacity duration-300 pointer-events-none">
@@ -403,13 +409,16 @@ export default function GamePage() {
               </div>
             )}
 
-            {(room.status === "countdown" || (room.status === "reveal" && countdown > 0)) && (
+            {(room.status === "countdown" || (room.status === "reveal" && countdown > 0 && !isMatch)) && (
               <div className="flex flex-col items-center justify-center animate-scale-in mt-12">
                 <p className="text-[#ec5b13] font-bold text-xl uppercase tracking-widest mb-4">Revealing in</p>
                 <div className="text-9xl font-black text-white glow-text shadow-xl">{countdown || 1}</div>
                 {isHost && (
                   <button 
-                    onClick={() => setRoomStatus(roomId, "reveal")}
+                    onClick={() => {
+                      setRoomStatus(roomId, "reveal");
+                      setCountdown(0);
+                    }}
                     className="mt-8 text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] hover:text-[#ec5b13] transition-colors"
                   >
                     Skip Countdown &raquo;
@@ -418,7 +427,7 @@ export default function GamePage() {
               </div>
             )}
 
-            {room.status === "reveal" && countdown === 0 && (
+            {room.status === "reveal" && (countdown === 0 || isMatch) && (
               <div className="flex flex-col items-center w-full max-w-2xl px-2 sm:px-6 space-y-8 mt-4 animate-scale-in">
                 <div className="text-center space-y-2">
                   <h2 className={`text-4xl md:text-5xl font-black uppercase italic tracking-tighter ${isMatch ? 'text-emerald-400 glow-text' : 'text-blue-200'}`}>
