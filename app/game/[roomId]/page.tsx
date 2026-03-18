@@ -33,51 +33,31 @@ export default function GamePage() {
   const [countdown, setCountdown] = useState(COUNTDOWN_TIME);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSyncAlert, setShowSyncAlert] = useState<{ type: string, names: string[] } | null>(null);
-  const [coinAlert, setCoinAlert] = useState<string | null>(null);
-  const [toastDesc, setToastDesc] = useState<string>("");
+  const [toastQueue, setToastQueue] = useState<{reason: string, amount: number}[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const hasSpokenRef = useRef(false);
+  const lastProcessedRoundRef = useRef<number>(-1);
 
   const isHost = room?.hostId === sessionId;
   const hasSubmitted = room?.currentGuesses[sessionId] !== undefined;
-  // Trigger Coin Sound & Toast
-  const prevCoinsRef = useRef<Record<string, number>>({});
-  useEffect(() => {
-     if (!room) return;
-     room.players.forEach(p => {
-        const prev = prevCoinsRef.current[p.id] || 0;
-        if (p.coins !== prev) {
-           if (p.id === sessionId) {
-              const diff = p.coins - prev;
-              
-              if (diff < 0) {
-                 setCoinAlert(`${diff} COINS`);
-                 setToastDesc("TIMEOUT PENALTY!");
-                 SoundEffects.playError();
-              } else {
-                 let description = "Pure Mind Luck!";
-                 const isTwoPlayer = room.players.length === 2;
-                 
-                 // Smart guess logic based on deltas
-                 if (diff === 5) description = "FIRST BLOOD BONUS";
-                 else if (diff >= 40 || (diff >= 50 && !isTwoPlayer)) description = "ULTRA SYNC MATCH";
-                 else if (diff === 10) description = "LATE SYNC BONUS";
-                 else if (diff === 25 || diff === 15) description = "PERFECT HARMONY";
-                 else if (diff >= 15) description = "MIND TWINS SYNC";
-                 else if (diff === 10) description = "CLOSE MATCH SYNC";
 
-                 setCoinAlert(`+${diff} COINS!`);
-                 setToastDesc(description);
-                 SoundEffects.playCoin();
-              }
-              
-              setTimeout(() => { setCoinAlert(null); setToastDesc(""); }, 4000);
-           }
-        }
-        prevCoinsRef.current[p.id] = p.coins;
-     });
-  }, [room?.players]);
+  // Process coin breakdowns when revealing
+  useEffect(() => {
+    if (room?.status === "reveal" && room.lastRoundCoinBreakdown && room.round !== lastProcessedRoundRef.current) {
+       lastProcessedRoundRef.current = room.round;
+       const myBreakdown = room.lastRoundCoinBreakdown[sessionId] || [];
+       if (myBreakdown.length > 0) {
+         setToastQueue(myBreakdown);
+         
+         const total = myBreakdown.reduce((sum, b) => sum + b.amount, 0);
+         if (total > 0) SoundEffects.playCoin();
+         else if (total < 0) SoundEffects.playError();
+         
+         setTimeout(() => setToastQueue([]), 4500);
+       }
+    }
+  }, [room?.status, room?.round, room?.lastRoundCoinBreakdown, sessionId]);
 
   // Sync Animation Trigger
   useEffect(() => {
@@ -396,16 +376,18 @@ export default function GamePage() {
           </div>
       )}
 
-      {/* Coin Toast (High-Level) */}
-      {coinAlert && (
-           <div className="fixed top-24 right-8 z-[200] animate-slide-in-right">
-              <div className="bg-yellow-400 text-slate-900 px-8 py-4 rounded-[2rem] font-black flex items-center gap-4 shadow-2xl border-b-8 border-yellow-700 scale-110">
-                 <span className="material-symbols-outlined text-4xl animate-spin" style={{ animationDuration: '3s' }}>monetization_on</span>
-                 <div className="flex flex-col">
-                    <span className="text-3xl tracking-tighter leading-none">{coinAlert}</span>
-                    <span className="text-[10px] uppercase font-black tracking-widest mt-1 opacity-70">{toastDesc || "Pure Mind Luck!"}</span>
-                 </div>
-              </div>
+      {/* Coin Toasts (High-Level) */}
+      {toastQueue.length > 0 && (
+           <div className="fixed top-24 right-8 z-[200] flex flex-col gap-3 items-end pointer-events-none">
+              {toastQueue.map((toast, idx) => (
+                <div key={idx} className={`animate-slide-in-right px-6 py-3 md:px-8 md:py-4 rounded-[1.5rem] md:rounded-[2rem] font-black flex items-center gap-3 md:gap-4 shadow-2xl scale-100 md:scale-110 origin-right transition-all ${toast.amount > 0 ? 'bg-yellow-400 text-slate-900 border-b-8 border-yellow-700' : 'bg-red-500 text-white border-b-8 border-red-700'}`} style={{animationDelay: `${idx * 0.15}s`}}>
+                   <span className="material-symbols-outlined text-3xl md:text-4xl animate-spin" style={{ animationDuration: '3s' }}>{toast.amount > 0 ? 'monetization_on' : 'warning'}</span>
+                   <div className="flex flex-col">
+                      <span className="text-2xl md:text-3xl tracking-tighter leading-none">{toast.amount > 0 ? `+${toast.amount}` : toast.amount} COINS</span>
+                      <span className="text-[9px] md:text-[10px] uppercase font-black tracking-widest mt-1 md:opacity-70 opacity-90">{toast.reason}</span>
+                   </div>
+                </div>
+              ))}
            </div>
       )}
 

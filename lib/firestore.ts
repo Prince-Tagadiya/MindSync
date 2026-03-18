@@ -184,22 +184,26 @@ export function checkAllMatch(guesses: Record<string, string>): boolean {
 }
 
 // Helper to calculate round points
-function calculateRoundPoints(players: Player[], guesses: Record<string, string>, guessTimes?: Record<string, number>, roundStartedAt?: number, timeLimit?: number): Player[] {
+function calculateRoundPoints(players: Player[], guesses: Record<string, string>, guessTimes?: Record<string, number>, roundStartedAt?: number, timeLimit?: number): { updatedPlayers: Player[], breakdown: Record<string, {reason: string, amount: number}[]> } {
   const newPlayers = [...players];
   const playerIds = players.map(p => p.id);
   const isTwoPlayer = playerIds.length === 2;
+  const breakdown: Record<string, {reason: string, amount: number}[]> = {};
+  
+  playerIds.forEach(id => breakdown[id] = []);
 
   // 0. Initial penalty for no submission
   newPlayers.forEach(p => {
     if (!guesses[p.id] || guesses[p.id].trim() === "") {
       p.coins = Math.max(0, (p.coins || 0) - 5);
+      breakdown[p.id].push({ reason: 'TIMEOUT PENALTY', amount: -5 });
     }
   });
 
   const validGuesses = Object.entries(guesses).filter(([id, w]) => w.trim() !== "");
   const guessValues = validGuesses.map(([id, w]) => w.trim().toLowerCase());
   
-  if (validGuesses.length < 2) return newPlayers;
+  if (validGuesses.length < 2) return { updatedPlayers: newPlayers, breakdown };
 
   // 1. First Blood Bonus (+5)
   if (guessTimes) {
@@ -214,7 +218,10 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
     }
     if (firstId) {
       const p = newPlayers.find(p => p.id === firstId);
-      if (p) p.coins = (p.coins || 0) + 5;
+      if (p) {
+        p.coins = (p.coins || 0) + 5;
+        breakdown[p.id].push({ reason: 'FIRST BLOOD BONUS', amount: 5 });
+      }
     }
   }
 
@@ -222,7 +229,10 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
   const allUniqueWords = Array.from(new Set(guessValues));
   const harmonyBonus = isTwoPlayer ? 15 : 25;
   if (allUniqueWords.length === 1 && guessValues.length === playerIds.length) {
-    newPlayers.forEach(p => p.coins = (p.coins || 0) + harmonyBonus);
+    newPlayers.forEach(p => {
+       p.coins = (p.coins || 0) + harmonyBonus;
+       breakdown[p.id].push({ reason: 'PERFECT HARMONY', amount: harmonyBonus });
+    });
   }
 
   // 3. Pairwise Bonuses
@@ -247,16 +257,16 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
       if (isSimultaneous) {
         const p1 = newPlayers.find(p => p.id === p1Id);
         const p2 = newPlayers.find(p => p.id === p2Id);
-        if (p1) p1.coins = (p1.coins || 0) + ultraBonus;
-        if (p2) p2.coins = (p2.coins || 0) + ultraBonus;
+        if (p1) { p1.coins = (p1.coins || 0) + ultraBonus; breakdown[p1.id].push({ reason: 'ULTRA SYNC MATCH', amount: ultraBonus }); }
+        if (p2) { p2.coins = (p2.coins || 0) + ultraBonus; breakdown[p2.id].push({ reason: 'ULTRA SYNC MATCH', amount: ultraBonus }); }
       } 
       // MIND TWINS (+20) - Regular exact match or >90% spelling
       else if (isExact || sim >= 0.9) {
         const twinBonus = isTwoPlayer ? 15 : 20;
         const p1 = newPlayers.find(p => p.id === p1Id);
         const p2 = newPlayers.find(p => p.id === p2Id);
-        if (p1) p1.coins = (p1.coins || 0) + twinBonus;
-        if (p2) p2.coins = (p2.coins || 0) + twinBonus;
+        if (p1) { p1.coins = (p1.coins || 0) + twinBonus; breakdown[p1.id].push({ reason: 'MIND TWINS SYNC', amount: twinBonus }); }
+        if (p2) { p2.coins = (p2.coins || 0) + twinBonus; breakdown[p2.id].push({ reason: 'MIND TWINS SYNC', amount: twinBonus }); }
 
         // Last Second Save (+15 bonus / +10 for 2p)
         const lateBonus = isTwoPlayer ? 10 : 15;
@@ -266,8 +276,8 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
            const s2 = t2 - roundStartedAt;
            // If either submitted within final 5s of the round
            if (s1 > (limitMs - 5000) || s2 > (limitMs - 5000)) {
-             if (p1) p1.coins = (p1.coins || 0) + lateBonus;
-             if (p2) p2.coins = (p2.coins || 0) + lateBonus;
+             if (p1) { p1.coins = (p1.coins || 0) + lateBonus; breakdown[p1.id].push({ reason: 'LATE SAVE BONUS', amount: lateBonus }); }
+             if (p2) { p2.coins = (p2.coins || 0) + lateBonus; breakdown[p2.id].push({ reason: 'LATE SAVE BONUS', amount: lateBonus }); }
            }
         }
       } 
@@ -275,12 +285,12 @@ function calculateRoundPoints(players: Player[], guesses: Record<string, string>
       else if (sim >= 0.7) {
         const p1 = newPlayers.find(p => p.id === p1Id);
         const p2 = newPlayers.find(p => p.id === p2Id);
-        if (p1) p1.coins = (p1.coins || 0) + 10;
-        if (p2) p2.coins = (p2.coins || 0) + 10;
+        if (p1) { p1.coins = (p1.coins || 0) + 10; breakdown[p1.id].push({ reason: 'HIGH SYNC BONUS', amount: 10 }); }
+        if (p2) { p2.coins = (p2.coins || 0) + 10; breakdown[p2.id].push({ reason: 'HIGH SYNC BONUS', amount: 10 }); }
       }
     }
   }
-  return newPlayers;
+  return { updatedPlayers: newPlayers, breakdown };
 }
 
 // ===== TRANSITION TO REVEAL (End of Play) =====
@@ -295,7 +305,7 @@ export async function transitionToReveal(
   const room = snap.data() as Room;
 
   // Award coins for the round that just ended
-  const updatedPlayers = calculateRoundPoints(room.players, room.currentGuesses, room.currentGuessTimes, room.roundStartedAt, room.timePerRound);
+  const { updatedPlayers, breakdown } = calculateRoundPoints(room.players, room.currentGuesses, room.currentGuessTimes, room.roundStartedAt, room.timePerRound);
 
   // Determine last sync info for animation
   let syncInfo: any = null;
@@ -325,6 +335,7 @@ export async function transitionToReveal(
     players: updatedPlayers,
     status: "reveal",
     lastRoundSyncInfo: syncInfo,
+    lastRoundCoinBreakdown: breakdown,
     [`roundHistory.${room.round}`]: room.currentGuesses,
   });
 
@@ -378,13 +389,13 @@ export async function finishGame(
   const room = snap.data() as Room;
 
   const currentGuesses = room.currentGuesses;
-  const finalPlayers = calculateRoundPoints(players, currentGuesses, room.currentGuessTimes, room.roundStartedAt, room.timePerRound);
+  const { updatedPlayers: finalPlayers, breakdown } = calculateRoundPoints(players, currentGuesses, room.currentGuessTimes, room.roundStartedAt, room.timePerRound);
 
   // Store persistence results
   const results = {
     chemistryScore: 0, // Calculated on results page
     totalRounds: room.round,
-    playerCoins: finalPlayers.reduce((acc, p) => ({ ...acc, [p.id]: p.coins }), {}),
+    playerCoins: finalPlayers.reduce((acc: any, p: Player) => ({ ...acc, [p.id]: p.coins }), {}),
     roundHistory: { ...room.roundHistory, [room.round]: currentGuesses },
     timestamp: Date.now(),
   };
@@ -392,6 +403,7 @@ export async function finishGame(
   await updateDoc(roomRef, {
     status: "finished",
     players: finalPlayers,
+    lastRoundCoinBreakdown: breakdown,
     [`roundHistory.${room.round}`]: currentGuesses,
     currentGuesses: {},
     lastMatchResults: results,

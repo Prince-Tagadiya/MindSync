@@ -34,6 +34,7 @@ export interface Room {
     type: 'exact' | 'close' | 'simultaneous';
     playerIds: string[];
   };
+  lastRoundCoinBreakdown?: Record<string, {reason: string, amount: number}[]>;
   lastMatchResults?: MatchResults;
   maxRounds?: number;
   playAgainRequests?: Record<string, 'accept' | 'decline' | 'pending'>;
