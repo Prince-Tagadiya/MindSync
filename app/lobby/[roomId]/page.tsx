@@ -17,17 +17,23 @@ export default function LobbyPage() {
   const [error, setError] = useState("");
   const [startError, setStartError] = useState("");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
   const [pendingLeader, setPendingLeader] = useState<any>(null);
+  const [joinName, setJoinName] = useState("");
+  const [joining, setJoining] = useState(false);
 
   const sessionId = typeof window !== "undefined" ? getSessionId() : "";
   const isHost = room?.hostId === sessionId;
 
   useEffect(() => {
     if (!roomId || !sessionId) return;
-    const playerName = getPlayerName();
-    if (playerName) {
-      joinRoom(roomId, sessionId, playerName).catch(() => {});
+    const name = getPlayerName();
+    
+    // Auto-join if name exists
+    if (name) {
+      joinRoom(roomId, sessionId, name).catch(() => {});
     }
+
     setSavedRoomId(roomId);
 
     const unsub = listenToRoom(roomId, (data) => {
@@ -38,16 +44,66 @@ export default function LobbyPage() {
       }
       setRoom(data);
 
+      // If they have no name and aren't in the player list, show join modal
+      const isPlayer = data.players.some(p => p.id === sessionId);
+      if (!isPlayer && !getPlayerName()) {
+        setShowJoinModal(true);
+      }
+
       if (data.status === "playing" || data.status === "countdown" || data.status === "reveal") {
-        router.push(`/game/${roomId}`);
+        if (isPlayer) router.push(`/game/${roomId}`);
       }
       if (data.status === "finished") {
-        router.push(`/result/${roomId}`);
+        if (isPlayer) router.push(`/result/${roomId}`);
       }
     });
 
     return () => unsub();
   }, [roomId, sessionId, router]);
+
+  const handleJoin = async () => {
+    if (!joinName.trim() || joining) return;
+    setJoining(true);
+    SoundEffects.playClick();
+    try {
+      const { setPlayerName } = await import("@/lib/session");
+      setPlayerName(joinName.trim());
+      const res = await joinRoom(roomId, sessionId, joinName.trim());
+      if (res.success) {
+        setShowJoinModal(false);
+        SoundEffects.playSuccess();
+      } else {
+        setError(res.error || "Failed to join.");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleInvite = async () => {
+    SoundEffects.playClick();
+    const inviteUrl = window.location.href;
+    const shareData = {
+      title: "Join my MindSync Room!",
+      text: `Let's sync minds! Join my room ${roomId} and see our chemistry.`,
+      url: inviteUrl,
+    };
+
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        console.log("Share cancelled or failed", err);
+        // Fallback to copy
+        navigator.clipboard.writeText(inviteUrl);
+      }
+    } else {
+      navigator.clipboard.writeText(inviteUrl);
+      alert("Invite link copied to clipboard!");
+    }
+  };
 
   const handleStartGame = async () => {
     SoundEffects.playClick();
@@ -105,13 +161,13 @@ export default function LobbyPage() {
         <div className="inline-flex flex-col items-center">
           <span className="text-slate-300 text-xs font-bold uppercase tracking-widest mb-2">Room Code</span>
           <div
-            onClick={handleCopyCode}
+            onClick={handleInvite}
             className="bg-white/10 border border-white/20 backdrop-blur-xl px-8 py-3 rounded-full shadow-2xl flex items-center gap-4 hover:scale-105 transition-transform duration-300 cursor-pointer"
-            title="Click to copy"
+            title="Invite collaborators"
           >
-            <h1 className="text-white text-4xl font-black tracking-[0.2em]">{roomId}</h1>
+            <h1 className="text-white text-2xl md:text-4xl font-black tracking-[0.2em]">{roomId}</h1>
             <button className="text-[#ec5b13] hover:text-[#ec5b13]/80 transition-colors">
-              <span className="material-symbols-outlined">content_copy</span>
+              <span className="material-symbols-outlined">share</span>
             </button>
           </div>
         </div>
@@ -291,10 +347,10 @@ export default function LobbyPage() {
 
         <div className="grid grid-cols-2 gap-4">
           <button
-            onClick={handleCopyCode}
+            onClick={handleInvite}
             className="bg-white/10 hover:bg-white/20 text-white font-bold py-4 rounded-2xl border border-white/10 backdrop-blur-md flex items-center justify-center gap-2 transition-all"
           >
-            <span className="material-symbols-outlined text-lg">link</span>
+            <span className="material-symbols-outlined text-lg">share</span>
             Invite
           </button>
           <button
@@ -306,6 +362,48 @@ export default function LobbyPage() {
           </button>
         </div>
       </div>
+      {/* Join Room Modal (For New Invitees) */}
+      {showJoinModal && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-2xl flex items-center justify-center p-4 animate-fade-in-up">
+          <div className="relative w-full max-w-md glass-panel rounded-[2.5rem] shadow-2xl border border-white/10 p-10 flex flex-col gap-8 text-center bg-[#0a0f1e]/90 overflow-hidden">
+             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#ec5b13] to-transparent"></div>
+             
+             <div>
+               <div className="w-20 h-20 bg-[#ec5b13]/20 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-12">
+                  <span className="material-symbols-outlined text-[#ec5b13] text-5xl">psychology</span>
+               </div>
+               <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase mb-2">Ready to Sync?</h2>
+               <p className="text-slate-400 font-medium">You've been invited to join room <span className="text-[#ec5b13] font-bold tracking-widest">{roomId}</span></p>
+             </div>
+
+             <div className="space-y-4">
+               <div className="relative group">
+                  <input 
+                    autoFocus
+                    value={joinName}
+                    onChange={(e) => setJoinName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                    placeholder="ENTER YOUR NAME"
+                    maxLength={15}
+                    className="w-full bg-white/5 border-2 border-white/10 rounded-2xl h-16 px-6 text-center text-white font-black text-xl uppercase tracking-widest focus:border-[#ec5b13] transition-all outline-none placeholder:text-slate-600 placeholder:font-bold"
+                  />
+                  <div className="absolute inset-y-0 right-4 flex items-center text-slate-600 group-focus-within:text-[#ec5b13] transition-colors">
+                     <span className="material-symbols-outlined">badge</span>
+                  </div>
+               </div>
+               
+               <button 
+                onClick={handleJoin}
+                disabled={!joinName.trim() || joining}
+                className="w-full py-5 bg-[#ec5b13] hover:bg-[#ec5b13]/90 text-white font-black rounded-2xl text-xl shadow-[0_10px_30px_-5px_rgba(236,91,19,0.3)] transition-all hover:translate-y-[-2px] active:translate-y-0 disabled:opacity-50"
+               >
+                 {joining ? "Joining..." : "JOIN NOW"}
+               </button>
+             </div>
+          </div>
+        </div>
+      )}
+
       {/* Transfer Leader Modal */}
       {pendingLeader && isHost && (
         <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up">
